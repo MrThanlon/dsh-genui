@@ -3,7 +3,9 @@
 给 DeepSeek Harness 的模型装上一支"画笔"：它能在回答里直接画出可交互的界面——数据面板、图表、函数曲线、表单、测验题，甚至 3D 场景。你还能点里面的按钮、拖滑块，模型会响应你的操作并更新界面。
 
 <div align="center">
+
 https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
+
 </div>
 
 > 60 秒演示录屏。播放器没出来时可直接 [下载 demo.mp4](./assets/demo.mp4)；完整四幕演示脚本见 [demo-prompts.md](./demo-prompts.md)。
