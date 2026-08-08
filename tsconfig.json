@@ -1,0 +1,53 @@
+{
+  "compilerOptions": {
+    "target": "es2024",
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [],
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "incremental": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "rootDir": "src",
+    "outDir": "lib/types",
+    "baseUrl": ".",
+    "paths": {
+      "@deepseek-ai/dsh-client-ui-primitives": [
+        "../../.dsh/source/current/packages/client/ui-primitives/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-system-prompt": [
+        "../../.dsh/source/current/packages/core/system-prompt/lib/types/index.d.ts"
+      ],
+      "@deepseek-ai/dsh-invariants": [
+        "../../.dsh/source/current/packages/support/invariants/lib/types/index.d.ts"
+      ],
+      "cordis": [
+        "../../.dsh/source/current/vendor/cordis/lib/types/index.d.ts"
+      ],
+      "cosmokit": [
+        "../../.dsh/source/current/vendor/cosmokit/lib/types/index.d.ts"
+      ]
+    }
+  },
+  "include": [
+    "src"
+  ]
+}
