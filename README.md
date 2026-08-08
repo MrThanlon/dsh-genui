@@ -4,7 +4,11 @@
 
 > 视频区：等 user-attachments 原生播放器链接（见下方说明）
 
-[![演示录屏（60 秒，点击在 GitHub 播放器里观看）](./assets/demo-thumb.png)](./assets/demo.mp4)
+<div align="center">
+https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
+</div>
+
+> 60 秒演示录屏。播放器没出来时可直接 [下载 demo.mp4](./assets/demo.mp4)；完整四幕演示脚本见 [demo-prompts.md](./demo-prompts.md)。
 
 ## 特性
 
