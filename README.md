@@ -26,16 +26,41 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 | "本月收入 ¥128,430，环比 +12.4%，建议关注转化率。" | 一行分析 + 旁边直接渲染：收入/订单/转化率三张统计卡、趋势图、进度条 |
 | 想再看别的？再打一段字问一遍 | 面板上就有「刷新」「切换视图」按钮，点一下，模型更新数据 |
 
-## 🚀 快速开始
+## 🚀 快速开始（内测成员）
 
-前置：dsh 含 `fence-registry`（`grep -r registerFenceRenderer <dsh源码>/packages/client/ui-primitives/src/` 有输出即可）。
+前置条件，缺一不可：
+
+1. **dsh 是最新内测版**：需含 `fence-registry` 扩展点（`grep -r registerFenceRenderer <dsh源码>/packages/client/ui-primitives/src/` 有输出即可；2026-08-09 之前的构建没有它，装了也不生效）
+2. **`pnpm` 在 PATH 上**：`dsh plugin` 命令依赖它。没有就 `corepack enable`（或 `npm i -g pnpm`），然后**新开一个终端**，确认 `pnpm -v` 有输出
+3. **GitHub 已登录**：插件仓库在私有组织 `dsh-external`，需要 `gh auth login` 或已配置 git credential helper
+
+安装（一行命令，自动带上全部依赖）：
+
+```sh
+dsh plugin --profile web add git+https://github.com/dsh-external/dsh-genui.git
+```
+
+> ⚠️ **别用 `link:` 装一个刚 clone 的目录**——`link:` 不会安装插件的依赖（mermaid / three / react），装完渲染器会挂。请用上面的 git URL 方式；只有本地开发迭代才用 link:（见下文）。
+
+重启 dsh web + 硬刷新，新会话里说"用 dsh-ui 画个统计看板"验证。
+
+### 一键脚本（推荐）
+
+clone 后直接跑，脚本会检查上述三个前置、执行安装、并提示重启：
 
 ```sh
 git clone https://github.com/dsh-external/dsh-genui.git
-dsh plugin --profile web add link:/path/to/dsh-genui
+cd dsh-genui
+./scripts/install.sh
 ```
 
-重启 dsh web + 硬刷新。新会话里说"用 dsh-ui 画个统计看板"验证。
+### 开发者迭代（link 模式）
+
+```sh
+cd dsh-genui
+pnpm install
+dsh plugin --profile web add link:$PWD
+```
 
 ## 🧩 它能做什么
 
@@ -76,6 +101,9 @@ dsh plugin --profile web add link:/path/to/dsh-genui
 ## ❓ 常见问题
 
 - **显示成代码块？** 查三处：dsh 版本带 fence-registry、`dsh plugin --profile web list` 里有本插件、重启 + 硬刷新。
+- **`dsh: pnpm not found on PATH`？** 装 pnpm 后**新开终端**再试（`corepack enable` 或 `npm i -g pnpm`）。
+- **安装时卡在 git 凭据/404？** 仓库在私有组织，先 `gh auth login`，再用 git URL 方式安装。
+- **装了但 scene3d/mermaid 不渲染？** 多半是用 `link:` 装的干净 clone，依赖没进去——卸掉改用 git URL 方式重装（`dsh plugin --profile web remove @deepseek-ai/dsh-genui` 后再 add）。
 - **模型不主动输出？** 重启后新会话生效；或直接说"用 dsh-ui 输出"。
 - **clone 后没有 lib/？** `pnpm install && pnpm run check` 自己构建。
 
