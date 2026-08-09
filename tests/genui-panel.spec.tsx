@@ -3,6 +3,9 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
+import { renderGenuiFence } from '../src/client/index.tsx'
+import { setActiveSessionId } from '../src/client/active-session.ts'
+import { repairGenuiSpec } from '../src/client/guard.ts'
 import { GenuiPanel } from '../src/client/panel.tsx'
 import { getPanelSpec, publishPanelSpec, subscribePanel } from '../src/client/panel-store.ts'
 import { GenuiToolView } from '../src/client/toolview.tsx'
@@ -14,6 +17,7 @@ afterEach(() => {
   vi.useRealTimers()
   publishPanelSpec('s1', null)
   publishPanelSpec('s2', null)
+  setActiveSessionId(null)
 })
 
 const text = (content: string) => ({ type: 'text', content })
@@ -128,5 +132,39 @@ describe('GenuiToolView publishes to the panel store', () => {
   it('does not publish while the call is running (no meta)', () => {
     render(<GenuiToolView {...props({ kind: 'tool-call', seq: 1, time: 0, callId: 'call-1', call: { name: 'render_ui', argsRaw: '{}' } } as ToolCallBlock)} />)
     expect(getPanelSpec('s1')).toBeNull()
+  })
+})
+
+describe('panel-only fences', () => {
+  it('publishes a panel:true fence to the active session and renders nothing', () => {
+    setActiveSessionId('s1')
+    const node = renderGenuiFence('{"panel":true,"title":"面板","items":[{"type":"text","content":"面板内容"}]}', 0)
+    expect(node).toBeNull()
+    const published = getPanelSpec('s1')
+    expect(published).not.toBeNull()
+    expect(published!.panel).toBe(true)
+    expect(published!.items.some(n => n.type === 'text' && 'content' in n && n.content === '面板内容')).toBe(true)
+  })
+
+  it('keeps ordinary fences rendering inline without touching the panel', () => {
+    setActiveSessionId('s1')
+    publishPanelSpec('s1', null)
+    const node = renderGenuiFence('{"title":"普通","items":[{"type":"text","content":"正文"}]}', 0)
+    expect(node).not.toBeNull()
+    expect(getPanelSpec('s1')).toBeNull()
+  })
+
+  it('skips publishing when no session is active', () => {
+    setActiveSessionId(null)
+    publishPanelSpec('s1', null)
+    const node = renderGenuiFence('{"panel":true,"items":[{"type":"text","content":"x"}]}', 0)
+    expect(node).toBeNull()
+    expect(getPanelSpec('s1')).toBeNull()
+  })
+
+  it('repair keeps the panel flag', () => {
+    const repaired = repairGenuiSpec({ panel: true, items: [] })
+    expect(repaired?.panel).toBe(true)
+    expect(repairGenuiSpec({ panel: 'yes', items: [] })?.panel).toBeUndefined()
   })
 })

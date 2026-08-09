@@ -15,6 +15,10 @@ export interface GenuiSpec {
     title?: string;
     /** Vertical gap between root items in px. */
     gap?: number;
+    /** Panel-only flag: `true` routes the fence to the session panel dock
+     * instead of the message flow (rendered by the same block, updated in
+     * place on every publish). */
+    panel?: boolean;
     /** Root component list. */
     items: GenuiNode[];
 }

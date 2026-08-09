@@ -21,10 +21,12 @@ import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { CodeBlock, registerFenceRenderer, type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives'
+import { getActiveSessionId, setActiveSessionId } from './active-session.ts'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { repairGenuiSpec } from './guard.ts'
 import { parsePartialGenuiSpec } from './parse-partial.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
+import { publishPanelSpec } from './panel-store.ts'
 import { GenuiToolView } from './toolview.tsx'
 
 /** Render a ```dsh-ui fence body as interactive components. While the body
@@ -32,11 +34,21 @@ import { GenuiToolView } from './toolview.tsx'
  * back to a plain code block, re-evaluated per chunk — matching the markdown
  * renderer's settled contract. Every accepted body runs through the spec
  * guard (limits + deterministic repair) so pathological or hostile specs
- * degrade gracefully instead of stalling the UI. */
+ * degrade gracefully instead of stalling the UI.
+ *
+ * A spec flagged `"panel": true` is PANEL-ONLY: it publishes to the session
+ * panel store (targeted by the active-session feed) and renders nothing in
+ * the message flow — the model updates the dock surface without stacking UI
+ * blocks per round. */
 export const renderGenuiFence: FenceRenderer = (raw, key) => {
   const parsed = parsePartialGenuiSpec(raw)
   const spec = parsed === null ? null : repairGenuiSpec(parsed)
   if (spec === null) return <CodeBlock key={key} code={`${raw}\n`} lang="dsh-ui" />
+  if (spec.panel === true) {
+    const sessionId = getActiveSessionId()
+    if (sessionId !== null) publishPanelSpec(sessionId, spec)
+    return null
+  }
   return <GenuiBlock key={key} spec={spec} />
 }
 
@@ -66,6 +78,14 @@ function panelActionSend(ctx: Context, sessionId: SessionId): GenuiPanelInjected
  * disposers lets cordis tear all registrations down on plugin unload. */
 export function apply(ctx: Context): () => void {
   const disposers: Array<() => void> = [registerFenceRenderer('dsh-ui', renderGenuiFence)]
+  // Active-session feed: keeps the panel-target for panel-only fences
+  // (renderers run synchronously without a session-scoped component seat).
+  const syncActive = (): void => {
+    const info = ctx.sessions.currentProvideInfo.getSnapshot()
+    setActiveSessionId(info?.sessionId ?? null)
+  }
+  syncActive()
+  disposers.push(ctx.sessions.currentProvideInfo.subscribe(syncActive))
   // Keyed toolview: the harness dispatches 'tool.call.toolview' by wire tool
   // name; registering under 'render_ui' gives the tool's result card the
   // GenUI renderer (reading the repaired spec from result meta). The toolview

@@ -1,0 +1,1 @@
+{"version":3,"file":"active-session.js","sourceRoot":"","sources":["../../../src/client/active-session.ts"],"names":[],"mappings":"AAiBA,8DAA8D;AAC9D,IAAI,eAAe,GAAkB,IAAI,CAAA;AAEzC,+DAA+D;AAC/D,MAAM,UAAU,kBAAkB;IAChC,OAAO,eAAe,CAAA;AACxB,CAAC;AAED,wEAAwE;AACxE,MAAM,UAAU,kBAAkB,CAAC,EAAiB;IAClD,eAAe,GAAG,EAAE,CAAA;AACtB,CAAC"}

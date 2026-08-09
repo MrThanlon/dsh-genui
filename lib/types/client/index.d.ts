@@ -22,7 +22,12 @@ import { type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives';
  * back to a plain code block, re-evaluated per chunk — matching the markdown
  * renderer's settled contract. Every accepted body runs through the spec
  * guard (limits + deterministic repair) so pathological or hostile specs
- * degrade gracefully instead of stalling the UI. */
+ * degrade gracefully instead of stalling the UI.
+ *
+ * A spec flagged `"panel": true` is PANEL-ONLY: it publishes to the session
+ * panel store (targeted by the active-session feed) and renders nothing in
+ * the message flow — the model updates the dock surface without stacking UI
+ * blocks per round. */
 export declare const renderGenuiFence: FenceRenderer;
 /** Cordis client entry: register the fence renderer on boot, the keyed
  * toolview for the render_ui tool, and the session panel dock; returning the

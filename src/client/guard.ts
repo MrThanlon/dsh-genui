@@ -634,6 +634,7 @@ export function repairGenuiSpec(value: unknown): GenuiSpec | null {
   return {
     ...opt('title', str(v.title, GENUI_LIMITS.maxString)),
     ...opt('gap', num(v.gap, 0, 96)),
+    ...opt('panel', v.panel === true ? true : undefined),
     items: repairItems(v.items, ctx, 0),
   }
 }
