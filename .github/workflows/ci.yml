@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.7.0
+
+      # Tests alias peer packages (@deepseek-ai/dsh-*, cordis vendor) to the
+      # dsh main-repo source tree at $HOME/.dsh/source/current (vitest.config.ts
+      # resolves DSH_ROOT relative to the checkout). The main repo is private
+      # and lives in another org, so it needs a PAT with read access
+      # (secrets.DSH_REPO_TOKEN).
+      - name: Clone dsh main repo
+        run: |
+          mkdir -p "$HOME/.dsh/source"
+          git clone --depth 1 "https://x-access-token:${{ secrets.DSH_REPO_TOKEN }}@github.com/dsh2026/test-taekchef.git" "$HOME/.dsh/source/current"
+
+      - name: Install main repo dependencies
+        working-directory: $HOME/.dsh/source/current
+        run: pnpm install --frozen-lockfile
+
+      - name: Install plugin dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check (typecheck + tests + build)
+        run: pnpm run check
+
+      # The committed lib/ must match the sources: a drift means the last
+      # source change was never built and shipped. Fail instead of auto-pushing
+      # build artifacts back to the repo.
+      - name: Verify lib matches src
+        run: |
+          git diff --exit-code -- lib/ || {
+            echo "::error::lib/ 与 src/ 不一致：请运行 pnpm run build 并提交 lib/ 产物"
+            exit 1
+          }

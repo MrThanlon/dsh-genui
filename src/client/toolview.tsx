@@ -14,6 +14,7 @@ import { useEffect, useMemo } from 'react'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/src/client/contract/slots'
 import { GenuiBlock } from './GenuiBlock.tsx'
+import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { repairGenuiSpec } from './guard.ts'
 import { publishPanelSpec } from './panel-store.ts'
 import css from './GenuiBlock.module.css'
@@ -49,7 +50,9 @@ export function GenuiToolView({ toolName, block, sessionId }: ToolCallViewProps)
   }
   return (
     <div className={css.tool} data-genui-tool>
-      <GenuiBlock spec={spec} />
+      <ErrorBoundary label="工具卡片">
+        <GenuiBlock spec={spec} />
+      </ErrorBoundary>
     </div>
   )
 }

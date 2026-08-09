@@ -24,6 +24,7 @@ import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import { GenuiActionContext, type GenuiActionHandler } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { GenuiBlock } from './GenuiBlock.tsx'
+import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { getPanelSpec, subscribePanel } from './panel-store.ts'
 import css from './GenuiBlock.module.css'
 
@@ -62,7 +63,9 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
       {!collapsed && (
         <div className={css.panelBody}>
           <GenuiActionContext.Provider value={sendGenuiAction}>
-            <GenuiBlock spec={spec} />
+            <ErrorBoundary label="面板">
+              <GenuiBlock spec={spec} />
+            </ErrorBoundary>
           </GenuiActionContext.Provider>
         </div>
       )}

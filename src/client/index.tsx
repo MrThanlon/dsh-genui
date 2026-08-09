@@ -22,6 +22,7 @@ import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
 import { CodeBlock, registerFenceRenderer, type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { getActiveSessionId, setActiveSessionId } from './active-session.ts'
+import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { repairGenuiSpec } from './guard.ts'
 import { parsePartialGenuiSpec } from './parse-partial.ts'
@@ -49,7 +50,11 @@ export const renderGenuiFence: FenceRenderer = (raw, key) => {
     if (sessionId !== null) publishPanelSpec(sessionId, spec)
     return null
   }
-  return <GenuiBlock key={key} spec={spec} />
+  return (
+    <ErrorBoundary label="该界面">
+      <GenuiBlock key={key} spec={spec} />
+    </ErrorBoundary>
+  )
 }
 
 /** Session panel action loop: same [genui-action] contract as inline fences,
