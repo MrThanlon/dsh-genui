@@ -97,6 +97,24 @@ export function apply(ctx: Context): void {
   // the render_ui tool join the model's tool set. `reflect.get(name, false)`
   // is cordis's non-throwing optional service lookup (the proxy's own trap
   // uses it) — property access without inject would throw instead.
-  const tools = ctx.reflect.get('tools', false) as { register(tool: unknown): unknown } | undefined
-  if (tools !== undefined) tools.register(createRenderUiTool())
+  //
+  // Start-up ordering: this plugin injects only `systemPrompt`, so cordis
+  // starts it EARLY — before the tools provider (which injects deeper
+  // dependencies) has bound its service. A one-shot probe at apply time
+  // therefore misses the registry on real hosts (the fence section lands,
+  // the tool never registers). Fix: probe immediately AND subscribe to
+  // `internal/service` (emitted by cordis on every service binding), so the
+  // registration lands the moment `tools` appears, whatever the order.
+  let registered = false
+  const tryRegister = (value: { register(tool: unknown): unknown } | undefined): void => {
+    if (registered) return
+    const tools = value ?? ctx.reflect.get('tools', false) as { register(tool: unknown): unknown } | undefined
+    if (tools === undefined) return
+    tools.register(createRenderUiTool())
+    registered = true
+  }
+  tryRegister(undefined)
+  ctx.on('internal/service', (name: string, value: unknown) => {
+    if (name === 'tools') tryRegister(value as { register(tool: unknown): unknown })
+  })
 }

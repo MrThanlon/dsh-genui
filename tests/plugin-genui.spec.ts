@@ -48,6 +48,21 @@ describe('genui:fence section', () => {
     expect((registered[0] as { name: string }).name).toBe('render_ui')
   })
 
+  it('registers render_ui when tools binds AFTER the plugin (start-up ordering)', async () => {
+    // Regression: this plugin injects only systemPrompt, so cordis starts it
+    // before the tools provider (which injects deeper dependencies) on real
+    // hosts. A one-shot probe at apply time silently missed the registry —
+    // the fence section landed, the tool never registered. The plugin must
+    // subscribe to the service-binding event and register when tools appears.
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(GenUI) // plugin first — tools not yet provided
+    const registered: unknown[] = []
+    ctx.provide('tools', { register: (tool: unknown) => { registered.push(tool) } })
+    expect(registered).toHaveLength(1)
+    expect((registered[0] as { name: string }).name).toBe('render_ui')
+  })
+
   it('keeps the fence channel without a tools service', async () => {
     const ctx = new Context()
     await ctx.plugin(SystemPrompt)
