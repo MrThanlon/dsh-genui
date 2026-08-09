@@ -21,7 +21,9 @@
 import type { GenuiSpec } from './spec.ts';
 /**
  * Publish a spec for a session. Older seqs are rejected (see module doc).
- * `null` clears the panel (also seq-gated). Same-seq publishes overwrite.
+ * `null` unconditionally clears the panel (resets the entry, so any later
+ * publish — fence or tool result — can rebuild it). Same-seq publishes
+ * overwrite.
  */
 export declare function publishPanelSpec(sessionId: string, spec: GenuiSpec | null, seq?: number): void;
 /** Current spec for a session (useSyncExternalStore getSnapshot). */
