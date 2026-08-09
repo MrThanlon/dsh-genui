@@ -140,8 +140,19 @@ dsh plugin --profile web add link:$PWD
 
 ```sh
 pnpm install
-pnpm run check   # 类型检查 + 114 测试 + 构建
+pnpm run check   # 类型检查 + 135 测试 + 构建
 ```
+
+### 真机 e2e
+
+真实链路验证：起一个临时 dsh web → 装上插件 → 浏览器里发消息让模型输出 `dsh-ui` fence → 断言渲染 → 点击 action 按钮 → 断言模型响应（事件循环闭环）：
+
+```sh
+DEEPSEEK_API_KEY=sk-... node scripts/e2e.mjs          # link 安装当前工作区
+DEEPSEEK_API_KEY=sk-... node scripts/e2e.mjs --install git   # 朋友路径（git URL）
+```
+
+前置：`dsh`/`pnpm` 在 PATH、`DEEPSEEK_API_KEY`、主仓 web 构建产物（playwright 从主仓解析）。PASS 时保存 `e2e-final.png` 截图。
 
 ## 🗺️ Roadmap（已评估项）
 

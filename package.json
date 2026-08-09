@@ -34,6 +34,21 @@
     "cordis.patch.yml"
   ],
   "license": "BSD-3-Clause",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dsh-external/dsh-genui.git"
+  },
+  "homepage": "https://github.com/dsh-external/dsh-genui",
+  "bugs": {
+    "url": "https://github.com/dsh-external/dsh-genui/issues"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "generative-ui",
+    "plugin",
+    "ui"
+  ],
   "dependencies": {
     "mermaid": "11.16.0",
     "react": "^18.3.1",
