@@ -9,11 +9,17 @@
  * — a session-scoped, always-present seat above the composer — so the panel
  * coexists with the message flow on one screen. Absent spec = no panel.
  *
+ * The dock is COLLAPSIBLE (TodoDock pattern), defaulting to a one-line
+ * header: a tall always-open panel pins above the composer and crushes the
+ * message flow's visible area, making history feel unreachable. Collapsed,
+ * it takes a single row; expanded, the body caps its height and scrolls
+ * internally, so the conversation stays scrollable either way.
+ *
  * Actions ride the same GenuiActionContext contract as inline fences: the
  * sendGenuiAction injection (built from the scoped conversation service in
  * apply) queues a [genui-action] user message back to the model.
  */
-import { useSyncExternalStore } from 'react'
+import { useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import { GenuiActionContext, type GenuiActionHandler } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
@@ -31,16 +37,35 @@ export type GenuiPanelProps = PropsRuntime<'conversation.input.dock'> & GenuiPan
 
 /**
  * Panel dock entry. Renders nothing until the session's toolview published a
- * spec; afterwards the SAME block re-renders on every publish.
+ * spec; afterwards the SAME block re-renders on every publish. Collapsed by
+ * default so the dock never steals the message flow's scroll room; the
+ * header always shows the current panel title.
  */
 export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
   const spec = useSyncExternalStore(subscribePanel, () => getPanelSpec(sessionId))
+  const [collapsed, setCollapsed] = useState(true)
   if (spec === null || spec.items.length === 0) return null
   return (
     <div className={css.panel} data-genui-panel>
-      <GenuiActionContext.Provider value={sendGenuiAction}>
-        <GenuiBlock spec={spec} />
-      </GenuiActionContext.Provider>
+      <div className={css.panelHeader}>
+        <button
+          type="button"
+          className={css.panelToggle}
+          aria-expanded={!collapsed}
+          onClick={() => setCollapsed(c => !c)}
+        >
+          <span className={css.panelBadge}>面板</span>
+          <span className={css.panelTitle}>{spec.title ?? 'GenUI 面板'}</span>
+          <span className={css.panelChevron} aria-hidden>{collapsed ? '▸' : '▾'}</span>
+        </button>
+      </div>
+      {!collapsed && (
+        <div className={css.panelBody}>
+          <GenuiActionContext.Provider value={sendGenuiAction}>
+            <GenuiBlock spec={spec} />
+          </GenuiActionContext.Provider>
+        </div>
+      )}
     </div>
   )
 }

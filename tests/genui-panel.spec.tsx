@@ -64,20 +64,30 @@ describe('GenuiPanel dock', () => {
     expect(container.querySelector('[data-genui-panel]')).toBeNull()
   })
 
-  it('renders the published spec for its own session only', () => {
+  it('renders collapsed with the title, and reveals content on expand (per session)', () => {
     publishPanelSpec('s1', { title: '面板 A', items: [text('内容 A')] })
     publishPanelSpec('s2', { title: '面板 B', items: [text('内容 B')] })
     const { container } = renderPanel('s1')
     expect(container.querySelector('[data-genui-panel]')).not.toBeNull()
+    // collapsed by default: title visible, content hidden
+    expect(screen.getByText('面板 A')).toBeTruthy()
+    expect(screen.queryByText('内容 A')).toBeNull()
+    expect(screen.queryByText('内容 B')).toBeNull()
+    // expand: content appears, other sessions' still hidden
+    fireEvent.click(container.querySelector('[aria-expanded="false"]')!)
     expect(screen.getByText('内容 A')).toBeTruthy()
     expect(screen.queryByText('内容 B')).toBeNull()
+    // collapse again
+    fireEvent.click(container.querySelector('[aria-expanded="true"]')!)
+    expect(screen.queryByText('内容 A')).toBeNull()
   })
 
-  it('updates in place when a new spec is published', () => {
+  it('updates in place when a new spec is published (expanded)', () => {
     const { container } = renderPanel()
-    act(() => { publishPanelSpec('s1', { items: [text('第一版')] }) })
+    act(() => { publishPanelSpec('s1', { title: 'T', items: [text('第一版')] }) })
+    fireEvent.click(container.querySelector('[aria-expanded="false"]')!)
     expect(screen.getByText('第一版')).toBeTruthy()
-    act(() => { publishPanelSpec('s1', { items: [text('第二版')] }) })
+    act(() => { publishPanelSpec('s1', { title: 'T', items: [text('第二版')] }) })
     expect(screen.queryByText('第一版')).toBeNull()
     expect(screen.getByText('第二版')).toBeTruthy()
     expect(container.querySelectorAll('[data-genui-panel]')).toHaveLength(1)
@@ -87,9 +97,11 @@ describe('GenuiPanel dock', () => {
     vi.useFakeTimers()
     const sendGenuiAction = vi.fn()
     publishPanelSpec('s1', {
+      title: 'T',
       items: [{ type: 'button', label: '刷新', action: 'refresh' }],
     })
-    renderPanel('s1', sendGenuiAction)
+    const { container } = renderPanel('s1', sendGenuiAction)
+    fireEvent.click(container.querySelector('[aria-expanded="false"]')!) // expand first
     fireEvent.click(screen.getByText('刷新'))
     expect(sendGenuiAction).not.toHaveBeenCalled()
     vi.advanceTimersByTime(GENUI_ACTION_DEBOUNCE_MS)
