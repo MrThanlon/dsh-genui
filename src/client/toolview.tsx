@@ -31,8 +31,14 @@ export function GenuiToolView({ toolName, block, sessionId }: ToolCallViewProps)
   const meta = 'meta' in block ? block.meta : undefined
   const spec = useMemo(() => (meta === undefined ? null : repairGenuiSpec(meta)), [meta])
   useEffect(() => {
-    publishPanelSpec(sessionId, spec)
-  }, [sessionId, spec])
+    // Publish the settled spec to the session panel (dock), carrying the
+    // result block's message seq: replay/refresh re-renders of an older
+    // result cannot clobber a newer panel fence. Running calls publish
+    // nothing — the panel keeps its last content.
+    if (spec !== null && spec.items.length > 0) {
+      publishPanelSpec(sessionId, spec, 'seq' in block ? block.seq : undefined)
+    }
+  }, [sessionId, spec, block])
   if (spec === null || spec.items.length === 0) {
     return (
       <div className={css.toolFallback} data-genui-tool>

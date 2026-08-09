@@ -168,3 +168,35 @@ describe('panel-only fences', () => {
     expect(repairGenuiSpec({ panel: 'yes', items: [] })?.panel).toBeUndefined()
   })
 })
+
+describe('panel publish ordering (seq gating)', () => {
+  it('rejects an older seq publish after a newer one', () => {
+    const newer = { items: [text('新')] }
+    const older = { items: [text('旧')] }
+    publishPanelSpec('s1', newer, 100)
+    publishPanelSpec('s1', older, 50) // replay of an older tool result
+    expect(getPanelSpec('s1')).toBe(newer)
+  })
+
+  it('accepts the same-seq overwrite and fence-latest publishes', () => {
+    const a = { items: [text('A')] }
+    const b = { items: [text('B')] }
+    publishPanelSpec('s1', a, 10)
+    publishPanelSpec('s1', b, 10) // same seq: later wins
+    expect(getPanelSpec('s1')).toBe(b)
+    const fence = { panel: true, items: [text('F')] }
+    publishPanelSpec('s1', fence) // fence = Infinity: always wins
+    expect(getPanelSpec('s1')).toBe(fence)
+    publishPanelSpec('s1', a, 999) // any finite seq loses to the fence
+    expect(getPanelSpec('s1')).toBe(fence)
+  })
+
+  it('clears unconditionally with null and lets later publishes rebuild', () => {
+    publishPanelSpec('s1', { items: [text('x')] }, 5)
+    publishPanelSpec('s1', null)
+    expect(getPanelSpec('s1')).toBeNull()
+    // after a clear, any publish rebuilds the panel (fence or tool result)
+    publishPanelSpec('s1', { items: [text('y')] }, 4)
+    expect(getPanelSpec('s1')?.items).toHaveLength(1)
+  })
+})
