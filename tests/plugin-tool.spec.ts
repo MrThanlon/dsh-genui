@@ -16,7 +16,12 @@ describe('render_ui tool definition', () => {
     expect(tool.description.length).toBeGreaterThan(50)
     const parameters = tool.parameters as { required?: string[]; properties?: Record<string, unknown> }
     expect(parameters.required).toContain('spec')
-    expect(parameters.properties?.spec).toBeDefined()
+    const spec = parameters.properties?.spec as { type?: string } | undefined
+    expect(spec).toBeDefined()
+    // spec must be schema-typed as an object: a serialized JSON string (the
+    // model's observed failure mode) fails argument validation early instead
+    // of reaching the guard, which could not repair it anyway.
+    expect(spec!.type).toBe('object')
   })
 
   it('declares a string output schema and a render projection', () => {
