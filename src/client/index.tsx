@@ -65,7 +65,7 @@ function panelActionSend(ctx: Context, sessionId: SessionId): GenuiPanelInjected
       const payloadText = Object.keys(payload).length === 0
         ? ''
         : ` 组件数据: ${JSON.stringify(payload)}`
-      void conversation.send(`[genui-action] ${action}。用户刚刚在面板中触发了动作 "${action}"，请根据组件数据执行相应操作，只输出一个 panel:true 的 dsh-ui 围栏来更新面板——不要输出任何文字、解释或普通围栏。${payloadText}`).catch(() => {
+      void conversation.send(`[genui-action] ${action}。用户刚刚在面板中触发了动作 "${action}"，请根据组件数据执行相应操作，只输出一个 panel:true 的 dsh-ui 围栏来更新面板，回复文本至多一行 10 字以内的确认（如"已刷新"），不要解释、不要普通围栏。${payloadText}`).catch(() => {
         // A failed prompt (session gone, agent busy) drops the action; the
         // panel stays interactive — the component is not disabled.
       })
