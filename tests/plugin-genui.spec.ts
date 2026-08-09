@@ -37,4 +37,22 @@ describe('genui:fence section', () => {
     const index = names.indexOf('genui:fence')
     expect(index).toBeGreaterThan(0)
   })
+
+  it('registers the render_ui tool when the tools service exists', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    const registered: unknown[] = []
+    ctx.provide('tools', { register: (tool: unknown) => { registered.push(tool) } })
+    await ctx.plugin(GenUI)
+    expect(registered).toHaveLength(1)
+    expect((registered[0] as { name: string }).name).toBe('render_ui')
+  })
+
+  it('keeps the fence channel without a tools service', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(GenUI)
+    const assembly = await ctx.systemPrompt.assemble({})
+    expect(assembly.sections.map(s => s.name)).toContain('genui:fence')
+  })
 })

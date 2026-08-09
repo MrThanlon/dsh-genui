@@ -536,3 +536,34 @@
   padding: 5px 12px; font-size: 12px; cursor: pointer;
 }
 .quizRetry:hover { border-color: var(--dsw-alias-state-business-primary, #4f8ef7); color: var(--dsw-alias-state-business-primary, #4f8ef7); }
+
+/* ---------- render_ui tool card ---------- */
+
+.tool {
+  /* The tool row already provides card chrome; the block sits directly. */
+  margin: 4px 0;
+}
+
+.toolFallback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border: 1px solid var(--dsw-alias-border-l1, var(--dsw-alias-border-l2, rgba(255,255,255,0.12)));
+  border-radius: 12px;
+  background: var(--dsw-alias-bg-layer-1, var(--dsw-alias-markdown-code-block));
+  font-size: 13px;
+}
+
+.toolFallbackTitle {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+.toolFallbackMeta {
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

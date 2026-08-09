@@ -3,11 +3,15 @@
 // controls (radio/switch/textarea/accordion/copy), and lazy modules
 // (mermaid, scene3d) render from a ```dsh-ui fence without crashing.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GenuiActionContext, MarkdownText, registerGenuiComponent } from '@deepseek-ai/dsh-client-ui-primitives'
+import { GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { sampleExpr } from '../src/client/safe-math.ts'
 
-afterEach(cleanup)
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
 
 function fenced(spec: unknown): string {
   return `\`\`\`dsh-ui\n${JSON.stringify(spec)}\n\`\`\``
@@ -161,7 +165,10 @@ describe('v1.4 content structure components', () => {
 })
 
 describe('GenUI v2 event loop', () => {
+  // Actions are trailing-debounced per name (GENUI_ACTION_DEBOUNCE_MS);
+  // assertions advance past the window.
   it('fires onGenuiAction when a button with action is clicked', () => {
+    vi.useFakeTimers()
     const actions: Array<[string, Record<string, unknown>]> = []
     const { container } = render(
       <GenuiActionContext.Provider value={(a, p) => actions.push([a, p])}>
@@ -173,13 +180,16 @@ describe('GenUI v2 event loop', () => {
     )
     const buttons = container.querySelectorAll('button')
     fireEvent.click(buttons[0]!)
+    vi.advanceTimersByTime(GENUI_ACTION_DEBOUNCE_MS)
     expect(actions).toEqual([['refresh', { type: 'button', label: '刷新' }]])
     // 无 action 的按钮不触发
     fireEvent.click(buttons[1]!)
+    vi.advanceTimersByTime(GENUI_ACTION_DEBOUNCE_MS)
     expect(actions).toHaveLength(1)
   })
 
   it('fires onGenuiAction for switch and checkbox', () => {
+    vi.useFakeTimers()
     const actions: Array<[string, Record<string, unknown>]> = []
     const { container } = render(
       <GenuiActionContext.Provider value={(a, p) => actions.push([a, p])}>
@@ -190,8 +200,10 @@ describe('GenUI v2 event loop', () => {
       </GenuiActionContext.Provider>,
     )
     fireEvent.click(container.querySelector('[role="switch"]')!)
+    vi.advanceTimersByTime(GENUI_ACTION_DEBOUNCE_MS)
     expect(actions[0]).toEqual(['toggle-save', { type: 'switch', checked: false }])
     fireEvent.click(container.querySelector('input[type="checkbox"]')!)
+    vi.advanceTimersByTime(GENUI_ACTION_DEBOUNCE_MS)
     expect(actions[1]).toEqual(['agree', { type: 'checkbox', checked: true }])
   })
 

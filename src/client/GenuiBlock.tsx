@@ -5,9 +5,10 @@
  * v1 interactivity is client-side only (buttons, tabs, checkboxes, and inputs
  * are operable; events do not flow back to the model).
  */
-import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { DiffBlock, JsonTree, CodeBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useGenuiAction, getGenuiComponent, type GenuiCustomNode } from '@deepseek-ai/dsh-client-ui-primitives'
+import { GENUI_LIMITS } from './guard.ts'
 import { PlotBlock } from './PlotBlock.tsx'
 import type {
   GenuiAccordion, GenuiBreadcrumb, GenuiCallout, GenuiChart, GenuiCode, GenuiCopy, GenuiDiff, GenuiFileTree,
@@ -45,7 +46,12 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length]!
 }
 
-function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['onAction']): ReactNode {
+function renderNode(node: GenuiNode, key: number, onAction: GenuiBlockProps['onAction'] | undefined, depth = 0): ReactNode {
+  // Depth guard: a pathological spec must never recurse past the limit
+  // (stack overflow / DOM explosion). The fence path already repairs specs
+  // against the same limit; this is the belt-and-suspenders for direct
+  // GenuiBlock use and plugin-registered custom renderers.
+  if (depth > GENUI_LIMITS.maxDepth) return null
   switch (node.type) {
     case 'text': {
       const size = node.size ?? 'body'
@@ -58,7 +64,7 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
     case 'row': {
       return (
         <div key={key} className={css.row + (node.wrap ? ` ${css.wrap}` : '')}>
-          {node.items.map((c, i) => renderNode(c, i, onAction))}
+          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
           {node.spacer && <div className={css.spacer} />}
         </div>
       )
@@ -66,14 +72,14 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
     case 'col': {
       return (
         <div key={key} className={css.col} style={node.gap !== undefined ? { gap: `${node.gap}px` } : undefined}>
-          {node.items.map((c, i) => renderNode(c, i, onAction))}
+          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
         </div>
       )
     }
     case 'grid': {
       return (
         <div key={key} className={css.grid} style={{ gridTemplateColumns: `repeat(${Math.max(1, node.cols)}, 1fr)` }}>
-          {node.items.map((c, i) => renderNode(c, i, onAction))}
+          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
         </div>
       )
     }
@@ -81,7 +87,7 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
       return (
         <div key={key} className={css.card}>
           {node.title !== undefined && <div className={css.cardTitle}>{node.title}</div>}
-          {node.items.map((c, i) => renderNode(c, i, onAction))}
+          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
         </div>
       )
     }
@@ -131,7 +137,7 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
               ? e => onAction(action, { type: 'select', value: e.currentTarget.value })
               : undefined}
           >
-            {node.options.map((o, i) => <option key={i}>{o}</option>)}
+            {node.options.slice(0, GENUI_LIMITS.maxOptions).map((o, i) => <option key={i}>{o}</option>)}
           </select>
         </label>
       )
@@ -176,7 +182,15 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
     case 'progress': {
       const v = Math.max(0, Math.min(100, Number(node.value) || 0))
       return (
-        <div key={key} className={css.progress}>
+        <div
+          key={key}
+          className={css.progress}
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={v}
+          aria-label={node.label ?? node.valueLabel ?? undefined}
+        >
           {(node.label !== undefined || node.valueLabel !== undefined) && (
             <div className={css.progressRow}>
               <span>{node.label}</span>
@@ -189,9 +203,10 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
     }
     case 'divider': return <hr key={key} className={css.divider} />
     case 'list': {
+      const items = node.items.slice(0, GENUI_LIMITS.maxListItems)
       return (
         <div key={key} className={css.list}>
-          {node.items.map((item, i) => (
+          {items.map((item, i) => (
             <div key={i} className={css.li}>
               {typeof item === 'string'
                 ? <span className={css.liTitle}>{item}</span>
@@ -202,13 +217,15 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
       )
     }
     case 'table': {
+      const columns = node.columns.slice(0, GENUI_LIMITS.maxTableCols)
+      const rows = node.rows.slice(0, GENUI_LIMITS.maxTableRows)
       return (
         <div key={key} className={css.tableWrap}>
           <table className={css.table}>
-            <thead><tr>{node.columns.map((c, i) => <th key={i}>{c}</th>)}</tr></thead>
+            <thead><tr>{columns.map((c, i) => <th key={i}>{c}</th>)}</tr></thead>
             <tbody>
-              {node.rows.map((row, i) => (
-                <tr key={i}>{row.map((cell, j) => <td key={j}>{String(cell)}</td>)}</tr>
+              {rows.map((row, i) => (
+                <tr key={i}>{row.slice(0, columns.length).map((cell, j) => <td key={j}>{String(cell)}</td>)}</tr>
               ))}
             </tbody>
           </table>
@@ -216,7 +233,7 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
       )
     }
     case 'chart': return <ChartNode key={key} chart={node} />
-    case 'tabs': return <TabsNode key={key} tabs={node} onAction={onAction} />
+    case 'tabs': return <TabsNode key={key} tabs={node} onAction={onAction} depth={depth + 1} />
     case 'avatar': {
       return (
         <div key={key} className={css.avatar} style={{ background: node.color ?? avatarColor(node.name) }}>
@@ -235,7 +252,7 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
     case 'radio': return <RadioNode key={key} node={node} onAction={onAction} />
     case 'switch': return <SwitchNode key={key} node={node} onAction={onAction} />
     case 'textarea': return <TextareaNode key={key} node={node} />
-    case 'accordion': return <AccordionNode key={key} node={node} onAction={onAction} />
+    case 'accordion': return <AccordionNode key={key} node={node} onAction={onAction} depth={depth + 1} />
     case 'copy': return <CopyNode key={key} node={node} />
     case 'mermaid': return <MermaidNode key={key} node={node} />
     case 'scene3d': return <Scene3DNode key={key} node={node} />
@@ -256,7 +273,7 @@ function renderNode(node: GenuiNode, key: number, onAction?: GenuiBlockProps['on
             key={key}
             node={custom}
             onAction={onAction}
-            renderChildren={(nodes, base) => nodes.map((c, i) => renderNode(c as GenuiNode, Number(base) + i, onAction))}
+            renderChildren={(nodes, base) => nodes.map((c, i) => renderNode(c as GenuiNode, Number(base) + i, onAction, depth + 1))}
           />
         )
       }
@@ -285,10 +302,11 @@ function CalloutNode({ node }: { node: GenuiCallout }) {
 
 /** Steps: a vertical progress checklist with an optional current index. */
 function StepsNode({ steps }: { steps: GenuiSteps }) {
-  const current = steps.current ?? steps.steps.length
+  const list = steps.steps.slice(0, GENUI_LIMITS.maxSteps)
+  const current = steps.current ?? list.length
   return (
     <ol className={css.steps}>
-      {steps.steps.map((step, i) => {
+      {list.map((step, i) => {
         const done = i < current
         const active = i === current
         return (
@@ -307,9 +325,10 @@ function StepsNode({ steps }: { steps: GenuiSteps }) {
 
 /** KeyValue: a definition list for configs and metadata. */
 function KeyValueNode({ node }: { node: GenuiKeyValue }) {
+  const pairs = node.pairs.slice(0, GENUI_LIMITS.maxKeyValuePairs)
   return (
     <dl className={css.keyvalue}>
-      {node.pairs.map((pair, i) => (
+      {pairs.map((pair, i) => (
         <div key={i} className={css.kvRow}>
           <dt className={css.kvKey}>{pair.key}</dt>
           <dd className={css.kvValue}>{pair.value}</dd>
@@ -321,9 +340,10 @@ function KeyValueNode({ node }: { node: GenuiKeyValue }) {
 
 /** Plot: SVG function plot over the SafeMath evaluator. */
 function PlotNode({ plot }: { plot: GenuiPlot }) {
+  const series = plot.series.slice(0, GENUI_LIMITS.maxPlotSeries)
   return (
     <PlotBlock
-      series={plot.series.map(s => ({ expr: s.expr, label: s.label, color: s.color, params: s.params }))}
+      series={series.map(s => ({ expr: s.expr, label: s.label, color: s.color, params: s.params }))}
       xMin={plot.xMin} xMax={plot.xMax} yMin={plot.yMin} yMax={plot.yMax} title={plot.title}
     />
   )
@@ -345,7 +365,7 @@ function JsonNode({ node }: { node: GenuiJson }) {
 
 /** Code: 收编 dsh CodeBlock with explicit language. */
 function CodeNode({ node }: { node: GenuiCode }) {
-  return <CodeBlock code={node.code} lang={node.lang} />
+  return <CodeBlock code={node.code.slice(0, GENUI_LIMITS.maxCode)} lang={node.lang} />
 }
 
 /** Chart: bars (default), line (trend), or donut (share); multi-series bars via `series`. */
@@ -358,7 +378,7 @@ function ChartNode({ chart }: { chart: GenuiChart }) {
 
 /** Bars: one column per datum (grouped bars when `series` is present). */
 function BarsNode({ chart }: { chart: GenuiChart }) {
-  const grouped = chart.series
+  const grouped = chart.series !== undefined ? chart.series.slice(0, GENUI_LIMITS.maxPlotSeries) : undefined
   if (grouped !== undefined && grouped.length > 0) {
     const labels = grouped[0]!.data.map(d => d.label)
     const max = Math.max(...grouped.flatMap(s => s.data.map(d => Number(d.value) || 0)), 1)
@@ -389,7 +409,7 @@ function BarsNode({ chart }: { chart: GenuiChart }) {
       </div>
     )
   }
-  const data = chart.data
+  const data = chart.data.slice(0, GENUI_LIMITS.maxChartPoints)
   const max = Math.max(...data.map(d => Number(d.value) || 0), 1)
   return (
     <div className={css.chart}>
@@ -409,7 +429,7 @@ function BarsNode({ chart }: { chart: GenuiChart }) {
 
 /** Line: polyline over a fixed-height plot area. */
 function LineChartNode({ chart }: { chart: GenuiChart }) {
-  const data = chart.data
+  const data = chart.data.slice(0, GENUI_LIMITS.maxChartPoints)
   const W = 460
   const H = 140
   const pad = 8
@@ -441,7 +461,7 @@ function LineChartNode({ chart }: { chart: GenuiChart }) {
 
 /** Donut: share of total with a center total. */
 function DonutNode({ chart }: { chart: GenuiChart }) {
-  const data = chart.data
+  const data = chart.data.slice(0, GENUI_LIMITS.maxChartPoints)
   const total = data.reduce((s, d) => s + (Number(d.value) || 0), 0) || 1
   const R = 42
   const C = 2 * Math.PI * R
@@ -481,19 +501,41 @@ function DonutNode({ chart }: { chart: GenuiChart }) {
   )
 }
 
-/** Tab strip with local active-tab state. */
-function TabsNode({ tabs, onAction }: { tabs: GenuiTabs; onAction?: GenuiBlockProps['onAction'] }) {
+/** Tab strip with local active-tab state. Keyboard: ArrowLeft/Right to move,
+ * Home/End to jump; ids wired via useId so `aria-controls` stays unique
+ * across fences and sessions. */
+function TabsNode({ tabs, onAction, depth = 0 }: { tabs: GenuiTabs; onAction?: GenuiBlockProps['onAction']; depth?: number }) {
   const [active, setActive] = useState(0)
-  const current = tabs.tabs[active]
+  const uid = useId()
+  const list = tabs.tabs.slice(0, GENUI_LIMITS.maxTabs)
+  const current = list[active]
+  const move = (next: number): void => {
+    const n = (next + list.length) % list.length
+    setActive(n)
+    document.getElementById(`${uid}-tab-${n}`)?.focus()
+  }
   return (
     <div className={css.tabs}>
-      <div className={css.tabBar} role="tablist">
-        {tabs.tabs.map((tab, i) => (
+      <div
+        className={css.tabBar}
+        role="tablist"
+        aria-orientation="horizontal"
+        onKeyDown={e => {
+          if (e.key === 'ArrowRight') { e.preventDefault(); move(active + 1) }
+          else if (e.key === 'ArrowLeft') { e.preventDefault(); move(active - 1) }
+          else if (e.key === 'Home') { e.preventDefault(); move(0) }
+          else if (e.key === 'End') { e.preventDefault(); move(list.length - 1) }
+        }}
+      >
+        {list.map((tab, i) => (
           <button
             key={i}
+            id={`${uid}-tab-${i}`}
             type="button"
             role="tab"
             aria-selected={i === active}
+            aria-controls={`${uid}-panel-${i}`}
+            tabIndex={i === active ? 0 : -1}
             className={`${css.tab} ${i === active ? css.tabActive : ''}`}
             onClick={() => setActive(i)}
           >
@@ -502,26 +544,29 @@ function TabsNode({ tabs, onAction }: { tabs: GenuiTabs; onAction?: GenuiBlockPr
         ))}
       </div>
       {current !== undefined && (
-        <div className={css.col} role="tabpanel">
-          {current.items.map((c, i) => renderNode(c, i, onAction))}
+        <div className={css.col} role="tabpanel" id={`${uid}-panel-${active}`} aria-labelledby={`${uid}-tab-${active}`}>
+          {current.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
         </div>
       )}
     </div>
   )
 }
 
-/** Radio: one option from a group; local selection state. */
+/** Radio: one option from a group; local selection state. The group name is
+ * useId-based so sibling groups never collide (deterministic per mount). */
 function RadioNode({ node, onAction }: { node: GenuiRadio; onAction?: GenuiBlockProps['onAction'] }) {
   const [selected, setSelected] = useState(node.selected ?? 0)
+  const uid = useId()
   const action = node.action
+  const options = node.options.slice(0, GENUI_LIMITS.maxOptions)
   return (
     <div className={css.fieldGroup} role="radiogroup" aria-label={node.label}>
       {node.label !== undefined && <span className={css.fieldLabel}>{node.label}</span>}
-      {node.options.map((opt, i) => (
+      {options.map((opt, i) => (
         <label key={i} className={css.radio}>
           <input
             type="radio"
-            name={`genui-radio-${Math.random().toString(36).slice(2)}`}
+            name={`genui-radio-${uid}`}
             checked={i === selected}
             onChange={() => {
               setSelected(i)
@@ -574,25 +619,30 @@ function TextareaNode({ node }: { node: GenuiTextarea }) {
   )
 }
 
-/** Accordion: collapsible sections with local open state. */
-function AccordionNode({ node, onAction }: { node: GenuiAccordion; onAction?: GenuiBlockProps['onAction'] }) {
+/** Accordion: collapsible sections with local open state. Headings and
+ * bodies are wired via useId (`aria-controls`/`aria-labelledby`). */
+function AccordionNode({ node, onAction, depth = 0 }: { node: GenuiAccordion; onAction?: GenuiBlockProps['onAction']; depth?: number }) {
   const [open, setOpen] = useState<number | null>(0)
+  const uid = useId()
+  const items = node.items.slice(0, GENUI_LIMITS.maxAccordionItems)
   return (
     <div className={css.accordion}>
-      {node.items.map((item, i) => (
+      {items.map((item, i) => (
         <div key={i} className={css.accItem}>
           <button
             type="button"
             className={css.accHead}
+            id={`${uid}-head-${i}`}
             aria-expanded={open === i}
+            aria-controls={`${uid}-body-${i}`}
             onClick={() => setOpen(open === i ? null : i)}
           >
             <span className={css.accTitle}>{item.title}</span>
             <span className={css.accChevron}>{open === i ? '▾' : '▸'}</span>
           </button>
           {open === i && (
-            <div className={css.accBody}>
-              {item.items.map((c, ci) => renderNode(c, ci, onAction))}
+            <div className={css.accBody} id={`${uid}-body-${i}`} aria-labelledby={`${uid}-head-${i}`}>
+              {item.items.map((c, ci) => renderNode(c, ci, onAction, depth + 1))}
             </div>
           )}
         </div>
@@ -623,20 +673,21 @@ function CopyNode({ node }: { node: GenuiCopy }) {
 function MermaidNode({ node }: { node: GenuiMermaid }) {
   const [html, setHtml] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
+  const code = node.code.slice(0, GENUI_LIMITS.maxMermaid)
   useEffect(() => {
     let alive = true
     void import('./mermaid-lazy.ts').then(async m => {
       try {
-        const svg = await m.renderMermaid(node.code)
+        const svg = await m.renderMermaid(code)
         if (alive) setHtml(svg)
       } catch {
         if (alive) setFailed(true)
       }
     })
     return () => { alive = false }
-  }, [node.code])
-  if (failed) return <div className={css.mermaidFallback}><pre>{node.code}</pre><div className={css.mermaidErr}>mermaid 渲染失败</div></div>
-  if (html === null) return <div className={css.mermaidFallback}><pre>{node.code}</pre><div className={css.mermaidHint}>渲染中…</div></div>
+  }, [code])
+  if (failed) return <div className={css.mermaidFallback}><pre>{code}</pre><div className={css.mermaidErr}>mermaid 渲染失败</div></div>
+  if (html === null) return <div className={css.mermaidFallback}><pre>{code}</pre><div className={css.mermaidHint}>渲染中…</div></div>
   return <div className={css.mermaid} dangerouslySetInnerHTML={{ __html: html }} data-genui-mermaid />
 }
 
@@ -644,20 +695,23 @@ function MermaidNode({ node }: { node: GenuiMermaid }) {
 function Scene3DNode({ node }: { node: GenuiScene3D }) {
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading')
   const ref = useRef<HTMLDivElement | null>(null)
+  // Mesh cap mirrored from the guard: a pathological scene never reaches
+  // three.js (per-frame cost scales with mesh count).
+  const scene = node.meshes.length > GENUI_LIMITS.maxMeshes ? { ...node, meshes: node.meshes.slice(0, GENUI_LIMITS.maxMeshes) } : node
   useEffect(() => {
     let alive = true
     let dispose: (() => void) | undefined
     void import('./scene3d-lazy.ts').then(async m => {
       if (!alive || ref.current === null) return
       try {
-        dispose = await m.mountScene(ref.current, node)
+        dispose = await m.mountScene(ref.current, scene)
         if (alive) setStatus('ready')
       } catch {
         if (alive) setStatus('error')
       }
     })
     return () => { alive = false; dispose?.() }
-  }, [node])
+  }, [scene])
   return (
     <div className={css.scene3dWrap} data-genui-scene3d>
       {node.title !== undefined && <div className={css.scene3dTitle}>{node.title}</div>}
@@ -670,13 +724,14 @@ function Scene3DNode({ node }: { node: GenuiScene3D }) {
 
 /** Timeline: vertical event list with time markers. */
 function TimelineNode({ node }: { node: GenuiTimeline }) {
+  const items = node.items.slice(0, GENUI_LIMITS.maxTimelineItems)
   return (
     <div className={css.timeline}>
-      {node.items.map((item, i) => (
+      {items.map((item, i) => (
         <div key={i} className={css.tlItem}>
           <div className={css.tlRail}>
             <span className={css.tlDot} />
-            {i < node.items.length - 1 && <span className={css.tlLine} />}
+            {i < items.length - 1 && <span className={css.tlLine} />}
           </div>
           <div className={css.tlBody}>
             <div className={css.tlHead}>
@@ -694,6 +749,7 @@ function TimelineNode({ node }: { node: GenuiTimeline }) {
 /** FileTree: indented tree of files and folders. */
 function FileTreeNode({ node }: { node: GenuiFileTree }) {
   const renderNode = (n: GenuiFileTreeNode, depth: number, i: number): ReactNode => {
+    if (depth > GENUI_LIMITS.maxTreeDepth) return null
     const isDir = n.type === 'dir' || (n.children !== undefined && n.children.length > 0)
     return (
       <div key={`${depth}-${i}`} className={css.ftRow} style={{ paddingLeft: `${depth * 16}px` }}>
@@ -703,7 +759,7 @@ function FileTreeNode({ node }: { node: GenuiFileTree }) {
       </div>
     )
   }
-  return <div className={css.fileTree}>{node.items.map((n, i) => renderNode(n, 0, i))}</div>
+  return <div className={css.fileTree}>{node.items.slice(0, GENUI_LIMITS.maxListItems).map((n, i) => renderNode(n, 0, i))}</div>
 }
 
 /** Quiz: a self-contained teaching question. Selecting an option marks it
@@ -711,14 +767,15 @@ function FileTreeNode({ node }: { node: GenuiFileTree }) {
  * frontend, no model round-trip (fits the v1 interaction contract). */
 function QuizNode({ node }: { node: GenuiQuiz }) {
   const [selected, setSelected] = useState<number | null>(null)
+  const options = node.options.slice(0, GENUI_LIMITS.maxQuizOptions)
   const answered = selected !== null
-  const chosen = selected === null ? undefined : node.options[selected]
+  const chosen = selected === null ? undefined : options[selected]
   const correct = chosen?.correct === true
   return (
     <div className={css.quiz} data-genui-quiz>
       <div className={css.quizQuestion}>{node.question}</div>
       <div className={css.quizOptions}>
-        {node.options.map((opt, i) => {
+        {options.map((opt, i) => {
           const isChosen = selected === i
           const cls = answered
             ? isChosen
@@ -740,7 +797,7 @@ function QuizNode({ node }: { node: GenuiQuiz }) {
         })}
       </div>
       {answered && (
-        <div className={css.quizResult}>
+        <div className={css.quizResult} aria-live="polite">
           <div className={correct ? css.quizCorrectMsg : css.quizWrongMsg}>
             {correct ? '✓ 回答正确！' : '✗ 再想想看'}
             {chosen?.feedback !== undefined && <div className={css.quizFeedback}>{chosen.feedback}</div>}
@@ -755,16 +812,58 @@ function QuizNode({ node }: { node: GenuiQuiz }) {
 
 /** Breadcrumb: path-style navigation trail. */
 function BreadcrumbNode({ node }: { node: GenuiBreadcrumb }) {
+  const items = node.items.slice(0, GENUI_LIMITS.maxBreadcrumbItems)
   return (
     <nav className={css.breadcrumb} aria-label="breadcrumb">
-      {node.items.map((item, i) => (
+      {items.map((item, i) => (
         <span key={i} className={css.bcItem}>
-          <span className={`${css.bcText} ${i === node.items.length - 1 ? css.bcCurrent : ''}`}>{item}</span>
-          {i < node.items.length - 1 && <span className={css.bcSep}>/</span>}
+          <span className={`${css.bcText} ${i === items.length - 1 ? css.bcCurrent : ''}`}>{item}</span>
+          {i < items.length - 1 && <span className={css.bcSep}>/</span>}
         </span>
       ))}
     </nav>
   )
+}
+
+/**
+ * Trailing debounce window (ms) for one `[genui-action]` name: rapid
+ * repeated interactions on one control (button mashing, switch flipping)
+ * collapse into a single action with the LAST payload. Different action
+ * names stay independent. The model round-trip takes seconds, so a few
+ * hundred ms of trailing delay is imperceptible — and it stops bursts of
+ * queued user turns.
+ */
+export const GENUI_ACTION_DEBOUNCE_MS = 300
+
+/**
+ * Wrap the harness action callback with the per-action trailing debounce.
+ * Absent provider = v1 behavior (components are display-only, callback
+ * stays undefined). Pending timers are cleared on unmount so a click that
+ * never fired does not leak into the next mount.
+ */
+function useDebouncedAction(onAction: GenuiBlockProps['onAction'] | undefined): GenuiBlockProps['onAction'] {
+  const pending = useRef<Map<string, ReturnType<typeof setTimeout>> | null>(null)
+  useEffect(() => {
+    return () => {
+      const timers = pending.current
+      if (timers === null) return
+      for (const timer of timers.values()) clearTimeout(timer)
+      timers.clear()
+    }
+  }, [])
+  return useMemo(() => {
+    if (onAction === undefined) return undefined
+    const timers = new Map<string, ReturnType<typeof setTimeout>>()
+    pending.current = timers
+    return (action: string, payload: Record<string, unknown>): void => {
+      const existing = timers.get(action)
+      if (existing !== undefined) clearTimeout(existing)
+      timers.set(action, setTimeout(() => {
+        timers.delete(action)
+        onAction(action, payload)
+      }, GENUI_ACTION_DEBOUNCE_MS))
+    }
+  }, [onAction])
 }
 
 /**
@@ -773,7 +872,7 @@ function BreadcrumbNode({ node }: { node: GenuiBreadcrumb }) {
  */
 export const GenuiBlock = memo(function GenuiBlock({ spec }: GenuiBlockProps) {
   const gap = spec.gap ?? 14
-  const onAction = useGenuiAction()
+  const onAction = useDebouncedAction(useGenuiAction())
   return (
     <div className={css.block} data-genui>
       {spec.title !== undefined && <div className={css.banner}>{spec.title}</div>}
@@ -788,7 +887,7 @@ export const GenuiBlock = memo(function GenuiBlock({ spec }: GenuiBlockProps) {
             className={css.reveal}
             style={{ animationDelay: `${Math.min(i * 90, 720)}ms` }}
           >
-            {renderNode(c, i, onAction)}
+            {renderNode(c, i, onAction, 0)}
           </div>
         ))}
       </div>

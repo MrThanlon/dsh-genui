@@ -48,7 +48,10 @@ dsh plugin --profile web add link:/path/to/dsh-genui
 </p>
 
 - **测验**：`quiz` 点选判题 + 解析 + 重试
-- **事件循环**：按钮/开关带 `action`，点击回传模型，模型更新界面
+- **事件循环**：按钮/开关带 `action`，点击回传模型，模型更新界面；同名 action 300ms 尾沿防抖，连点合并为一次（最后一次的值生效）
+- **工具通道**：`render_ui` 工具把同一份 spec 渲染成工具行卡片（交付物型 UI 走工具、回答型 UI 走围栏）
+- **自愈与上限**：每个围栏过规格守卫——坏节点静默丢弃、数值钳位、字符串截断，整树 ≤200 节点 / 8 层嵌套，病态 spec 不会拖垮界面
+- **可访问性**：tabs/折叠/开关/进度条带完整 ARIA 与键盘导航（方向键切页、Home/End 跳转）
 - **零打扰**：不装插件时围栏只是代码块，不报错、不污染会话
 
 组件 JSON 语法见 [SKILL.md](./SKILL.md)（也可复制到 `~/.dsh/skills/genui/` 增强模型使用）。
@@ -80,8 +83,17 @@ dsh plugin --profile web add link:/path/to/dsh-genui
 
 ```sh
 pnpm install
-pnpm run check   # 类型检查 + 63 测试 + 构建
+pnpm run check   # 类型检查 + 114 测试 + 构建
 ```
+
+## 🗺️ Roadmap（已评估项）
+
+| 方向 | 结论 | 理由 |
+|---|---|---|
+| 增量 patch（模型只发 diff 不重发全量 spec） | 不做 | fence 一次 200–800 token，重发代价极小；patch 协议的教学成本与出错率不值得。若未来出现秒级自动刷新面板再议 |
+| action 防抖/去重 | ✅ 已做（300ms 尾沿，按 action 名独立） | 连点刷屏是真实摩擦，收口点一处改动 |
+| 跨会话状态持久化（回放恢复 tabs/开关） | 不做 | 回放重置是更正确的默认行为（模型已用新 fence 更新过界面）；流式期间状态天然保留 |
+| MCP 适配器 / 独立画廊页 / i18n | 不做 | 无跨工具需求信号；画廊素材已被 `gallery.ts` + demo-prompts + README 截图覆盖；内置文案仅 6 处 |
 
 测试解析 dsh 源码（`vitest.config.ts` 的 `DSH_ROOT`，默认 `~/.dsh/source/current`）。
 

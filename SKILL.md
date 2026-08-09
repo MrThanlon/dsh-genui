@@ -17,7 +17,7 @@ description: Render interactive UI components inline in your reply via the dsh-u
 展示：`stat` `badge` `progress` `list` `table` `keyvalue` `avatar` `timeline` `file-tree` `breadcrumb` `diff` `json` `code` `callout` `steps`
 图表：`chart`（bars/line/donut，可多序列）`plot`（数学函数图）
 交互：`button` `input` `select` `checkbox` `radio` `switch` `textarea` `tabs` `accordion` `copy`
-高级：`mermaid`（流程图/时序/甘特等）`scene3d`（3D WebGL）
+高级：`mermaid`（流程图/时序/甘特等）`scene3d`（3D WebGL）`quiz`（点选判题 + 解析 + 重试）
 
 ### 布局
 - text: `{"type":"text","size":"h1|h2|h3|body|muted|caption","content":"...","center":true?}`
@@ -62,6 +62,7 @@ description: Render interactive UI components inline in your reply via the dsh-u
 ### 高级
 - mermaid: `{"type":"mermaid","code":"graph TD\\nA-->B"}` — flowchart/sequence/class/gantt/pie/er/state/journey
 - scene3d: `{"type":"scene3d","title":"...","meshes":[{"shape":"box|sphere|cone|cylinder|torus","color":"#hex?","size":n|[w,h,d]?,"position":[x,y,z]?,"rotation":[rx,ry,rz]?,"scale":n?|[...]?}],"ambient":0-2?,"background":"#hex?"}` — 3D WebGL，可拖拽旋转、滚轮缩放；mesh 数量 1–5 个
+- quiz: `{"type":"quiz","question":"...","options":[{"label":"...","correct":true?,"feedback":"..."?}],"explanation":"...","id":"..."?}` — 教学问答：点选即判题、可重试；`id` 变化时重置
 
 ## 使用规则
 
@@ -72,3 +73,4 @@ description: Render interactive UI components inline in your reply via the dsh-u
 5. **深色主题友好**：配色选深底亮色；UI 主题跟随应用
 6. **场景判断**：用户要"画/展示/可视化/看数据/演示"时用；纯文字问答不需要
 7. **图表范围**：`plot` 给合理 xMin/xMax（如 -3.14 到 3.14）；3D 场景 mesh 少而精
+8. **规格要紧凑**：整棵组件树 ≤200 节点、≤8 层嵌套（超出部分会被渲染器裁掉），避免巨型 spec
