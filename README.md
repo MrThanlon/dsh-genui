@@ -167,4 +167,4 @@ DEEPSEEK_API_KEY=sk-... node scripts/e2e.mjs --install git   # 朋友路径（gi
 
 ---
 
-📄 License: BSD-3-Clause
+📄 License: MIT
