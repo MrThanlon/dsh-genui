@@ -1,1 +1,1 @@
-{"version":3,"file":"toolview.d.ts","sourceRoot":"","sources":["../../../src/client/toolview.tsx"],"names":[],"mappings":"AAAA;;;;;;;GAOG;AACH,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,2DAA2D,CAAA;AAKlG;;;;GAIG;AACH,wBAAgB,aAAa,CAAC,EAAE,QAAQ,EAAE,KAAK,EAAE,EAAE,iBAAiB,+BAkBnE"}
+{"version":3,"file":"toolview.d.ts","sourceRoot":"","sources":["../../../src/client/toolview.tsx"],"names":[],"mappings":"AAcA,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,2DAA2D,CAAA;AAMlG;;;;GAIG;AACH,wBAAgB,aAAa,CAAC,EAAE,QAAQ,EAAE,KAAK,EAAE,SAAS,EAAE,EAAE,iBAAiB,+BAuB9E"}
