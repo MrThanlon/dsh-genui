@@ -1,6 +1,6 @@
 ---
 name: genui
-description: Render interactive UI components inline in your reply via the dsh-ui fence (plot/mermaid/scene3d/charts/tables/forms/3D). Use when the user asks you to 画/展示/可视化/生成界面/做图表/演示数据, or when a structured dashboard, chart, diagram, table, form, or 3D scene would answer better than prose. Emit a ```dsh-ui fence with a JSON spec; the GUI renders it as real components where the fence sits.
+description: Render structured interactive UI inline in your reply via the dsh-ui fence — not just charts: callouts/badges for emphasis, lists/keyvalue for key points, steps/timeline for processes, tables for comparison, mermaid for flows, 3D for scenes. Use whenever structured presentation would be clearer than prose: 要点、强调、对比、流程、步骤、状态、数据、演示、操作 — even if the user did not ask for UI. Emit a ```dsh-ui fence with a JSON spec; the GUI renders it as real components where the fence sits.
 ---
 
 # GenUI — 生成式 UI 输出规范
@@ -64,6 +64,28 @@ description: Render interactive UI components inline in your reply via the dsh-u
 - scene3d: `{"type":"scene3d","title":"...","meshes":[{"shape":"box|sphere|cone|cylinder|torus","color":"#hex?","size":n|[w,h,d]?,"position":[x,y,z]?,"rotation":[rx,ry,rz]?,"scale":n?|[...]?}],"ambient":0-2?,"background":"#hex?"}` — 3D WebGL，可拖拽旋转、滚轮缩放；mesh 数量 1–5 个
 - quiz: `{"type":"quiz","question":"...","options":[{"label":"...","correct":true?,"feedback":"..."?}],"explanation":"...","id":"..."?}` — 教学问答：点选即判题、可重试；`id` 变化时重置
 
+## 什么时候用：内容类型 → 组件映射
+
+**判断口诀**：这段内容换成结构化组件，会不会比纯文字更好扫、更好懂、更好操作？会 → 就用，**不需要等用户开口要 UI**。
+
+| 你要呈现的内容 | 用这些组件 |
+|---|---|
+| 关键结论 / 要点罗列（≥2 条） | `list`、`keyvalue`、`callout` |
+| 重点强调 / 警告 / 注意事项 | `callout`（info/success/warning/error）、`badge`、`stat` |
+| 数据对比 / 趋势 / 占比 | `chart`（bars/line/donut）、`table` |
+| 关键指标数字 / 进度状态 | `stat`、`progress`、`badge` |
+| 流程 / 步骤 / 阶段 / 时间线 | `steps`、`timeline`、`mermaid`（flowchart/sequence/gantt） |
+| 目录 / 文件结构 / 层级关系 | `file-tree`、`mermaid`、`accordion` |
+| 状态一览 / 检查结果 | `badge` + `table` + `progress` 组合 |
+| 代码 / 配置 / 改动对比 | `code`、`diff`、`json` |
+| 两个方案 / 选项对比 | `table`、`tabs`、`diff` |
+| 教学 / 自测 / 判断题 | `quiz` |
+| 数学函数 / 曲线关系 | `plot`（可带参数滑块、动画） |
+| 需要用户操作 / 筛选 / 反馈 | `button`、`input`、`select`、`radio`、`switch`、`tabs` |
+| 3D 物体 / 空间布局 | `scene3d` |
+
+**别用的情况**：一句话能说清的事、纯闲聊、用户明确说不要 UI、以及"为了炫技硬塞"——组件服务内容，不是内容服务组件。
+
 ## 使用规则
 
 1. **围栏放哪，组件就出现在哪** —— 文字在前后自然流动，不要用工具、不要解释"这是一个围栏"。**围栏一闭合就立即渲染**（不等整条回答结束），所以可以边写文字边出组件
@@ -71,6 +93,6 @@ description: Render interactive UI components inline in your reply via the dsh-u
 3. **JSON 必须严格合法**：非法围栏会退化成纯代码块。不要在 JSON 字符串里放 markdown
 4. **不要嵌套围栏**：dsh-ui 里不要再包 ``` 代码围栏
 5. **深色主题友好**：配色选深底亮色；UI 主题跟随应用
-6. **场景判断**：用户要"画/展示/可视化/看数据/演示"时用；纯文字问答不需要
+6. **场景判断**：先查上面的映射表 —— 内容类型命中就上对应组件；只有纯文字问答、一句话能说清时才不用
 7. **图表范围**：`plot` 给合理 xMin/xMax（如 -3.14 到 3.14）；3D 场景 mesh 少而精
 8. **规格要紧凑**：整棵组件树 ≤200 节点、≤8 层嵌套（超出部分会被渲染器裁掉），避免巨型 spec

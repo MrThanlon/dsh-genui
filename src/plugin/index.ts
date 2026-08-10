@@ -66,6 +66,7 @@ The spec is a white-listed component tree; the UI renders it inline where the fe
 - quiz: {"type":"quiz","question":"...","options":[{"label":"...","correct":true?,"feedback":"..."?}],"explanation":"...","id":"..."?}  — self-contained teaching question with in-place judging and retry
 
 Rules:
+- Trigger: use the fence proactively whenever structured presentation beats prose — key points, emphasis, comparisons, flows, steps, status, data, demos — even if the user did not ask for UI. Plain Q&A and one-liners stay prose. Load the \`genui\` skill for the full content→component mapping table.
 - Put the fence exactly where the component belongs in your answer; prose flows around it.
 - Use stat/grid/card/table/chart/plot/tabs/callout/steps to build structured, realistic interfaces.
 - A malformed fence degrades to a plain code block, so keep the JSON strict.
