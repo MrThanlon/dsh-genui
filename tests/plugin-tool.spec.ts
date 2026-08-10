@@ -1,7 +1,7 @@
 // The render_ui tool definition: schema shape, execute behavior (guard-backed
 // repair + caps), and the presentation projections (call/result cards + meta
 // spec for the browser toolview).
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createRenderUiTool } from '../src/plugin/tool.ts'
 import { GENUI_LIMITS } from '../src/client/guard.ts'
 
@@ -22,6 +22,15 @@ describe('render_ui tool definition', () => {
     // model's observed failure mode) fails argument validation early instead
     // of reaching the guard, which could not repair it anyway.
     expect(spec!.type).toBe('object')
+    // The spec object carries structural hints for the tool-call bridge so it
+    // can serialize the tree directly instead of falling back to an
+    // OpenAI-style { arguments: "<JSON>" } wrapper (observed in the live
+    // harness bridge for bare-object parameters).
+    const specProps = (spec as { properties?: Record<string, unknown> }).properties
+    expect(specProps).toBeDefined()
+    for (const key of ['title', 'gap', 'panel', 'items']) {
+      expect(specProps![key]).toBeDefined()
+    }
   })
 
   it('declares a string output schema and a render projection', () => {
@@ -48,6 +57,47 @@ describe('render_ui execute', () => {
   it('returns a corrective message for an unusable spec', async () => {
     const value = await tool.execute({ spec: 'not a tree' })
     expect(String(value)).toContain('spec 无效')
+  })
+
+  it('unwraps bridge-wrapped spec shapes (transport compatibility)', async () => {
+    const spec = { title: '桥接兼容', items: [text('a')] }
+    // Observed live: the bridge nests the authored `spec` object inside a
+    // wrapper — the serialized text carried by { arguments: "..." } is itself
+    // `{ spec: { title, gap, items } }` — so test both with and without the
+    // inner `spec` key at every wrapper level.
+    const nested = { spec }
+    const expectOk = async (args: unknown) => {
+      const value = await tool.execute(args as never)
+      expect(String(value)).toContain('桥接兼容')
+    }
+    // Authored shape
+    await expectOk({ spec })
+    // Spec serialized to text
+    await expectOk({ spec: JSON.stringify(spec) })
+    await expectOk({ spec: JSON.stringify(nested) })
+    // {arguments} wrapper with a serialized or object spec
+    await expectOk({ arguments: JSON.stringify(spec) })
+    await expectOk({ arguments: JSON.stringify(nested) })
+    await expectOk({ arguments: spec })
+    await expectOk({ arguments: nested })
+    // Bare double-encoded strings
+    await expectOk(JSON.stringify(spec))
+    await expectOk(JSON.stringify(nested))
+  })
+
+  it('reports broken wrapped JSON as unusable instead of misparsing', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      // Corrupted mid-stream JSON (observed with large specs): the bridge
+      // passed the raw broken text through; it must not crash and must not
+      // pretend the spec is valid.
+      const value = await tool.execute({ arguments: '{"spec": {"items": [' } as never)
+      expect(String(value)).toContain('spec 无效')
+      expect(spy).toHaveBeenCalledOnce()
+      expect(String(spy.mock.calls[0]![0])).toContain('[genui-tool] spec wrapped as arguments-string')
+    } finally {
+      spy.mockRestore()
+    }
   })
 })
 
