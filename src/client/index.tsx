@@ -26,9 +26,11 @@ import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { repairGenuiSpec } from './guard.ts'
 import { parsePartialGenuiSpec } from './parse-partial.ts'
+import { createPanelSlashSource } from './panel-command.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
-import { publishPanelSpec } from './panel-store.ts'
+import { publishPanelAppend, publishPanelSpec } from './panel-store.ts'
 import { GenuiToolView } from './toolview.tsx'
+import type { SlashServiceContract } from '@deepseek-ai/dsh-client-ui-slash/client'
 
 /** Render a ```dsh-ui fence body as interactive components. While the body
  * still has no finished component (fence open / malformed) the renderer falls
@@ -41,13 +43,37 @@ import { GenuiToolView } from './toolview.tsx'
  * panel store (targeted by the active-session feed) and renders nothing in
  * the message flow — the model updates the dock surface without stacking UI
  * blocks per round. */
+/** A fence body counts as complete when it parses as a whole JSON value —
+ * used to gate append publishes, which must merge exactly once (never per
+ * streaming chunk). */
+function isCompleteJson(raw: string): boolean {
+  try {
+    JSON.parse(raw)
+    return true
+  } catch {
+    return false
+  }
+}
+
 export const renderGenuiFence: FenceRenderer = (raw, key) => {
   const parsed = parsePartialGenuiSpec(raw)
   const spec = parsed === null ? null : repairGenuiSpec(parsed)
   if (spec === null) return <CodeBlock key={key} code={`${raw}\n`} lang="dsh-ui" />
   if (spec.panel === true) {
     const sessionId = getActiveSessionId()
-    if (sessionId !== null) publishPanelSpec(sessionId, spec)
+    if (sessionId !== null) {
+      if (spec.append === true) {
+        // Append merges INTO the existing panel (tabs by label, else tail),
+        // keeping prior content and growing the panel without size limits.
+        // Gate on a complete body so the streaming partial parses never
+        // double-merge; a broken transfer simply leaves the panel unchanged.
+        // The fence key makes the merge idempotent per source — the renderer
+        // re-invokes a completed fence on settle/re-render passes.
+        if (isCompleteJson(raw)) publishPanelAppend(sessionId, spec, Number.POSITIVE_INFINITY, String(key))
+      } else {
+        publishPanelSpec(sessionId, spec)
+      }
+    }
     return null
   }
   return (
@@ -76,6 +102,19 @@ function panelActionSend(ctx: Context, sessionId: SessionId): GenuiPanelInjected
       })
     },
   }
+}
+
+/** Relay a `/panel <指令>` instruction to the model: the scoped conversation
+ * send with an explicit panel-only directive, so the model replaces the
+ * default panel with content tailored to the request. */
+function sendPanelInstruction(ctx: Context, sessionId: SessionId, instruction: string): void {
+  const scoped = ctx.sessions.scope(sessionId)
+  const conversation = scoped?.get('conversation') as IConversation | undefined
+  if (conversation === undefined) return
+  void conversation.send(`用户执行了 /panel 并请求：${instruction}。请只输出一个 panel:true 的 dsh-ui 围栏来更新会话面板，内容按请求定制；回复文本至多一行 10 字以内的确认（如"已更新"），不要解释、不要普通围栏。`).catch(() => {
+    // A failed prompt (session gone, agent busy) drops the instruction; the
+    // default panel stays visible.
+  })
 }
 
 /** Cordis client entry: register the fence renderer on boot, the keyed
@@ -108,11 +147,24 @@ export function apply(ctx: Context): () => void {
     order: 50,
     inject: (sessionId: SessionId): GenuiPanelInjected => panelActionSend(ctx, sessionId),
   }, GenuiPanel)))
+  // /panel slash command: a deterministic, client-side entry point that
+  // opens the panel dock (publishes the default spec + expand request),
+  // clears it (/panel clear), or relays an instruction to the model
+  // (/panel <指令>) so the panel gets tailored content.
+  const slash = ctx.get('slash') as SlashServiceContract | undefined
+  if (slash !== undefined) {
+    disposers.push(ctx.effect(() => slash.registerSource(
+      createPanelSlashSource((sessionId, instruction) => sendPanelInstruction(ctx, sessionId, instruction)),
+    ), 'genui: /panel'))
+  } else {
+    console.warn('[genui] slash service unavailable; /panel command disabled')
+  }
   return () => {
     for (const dispose of disposers) dispose()
   }
 }
 
-/** Browser services: the slots registry (toolview + dock) and sessions (for
- * the scoped conversation send behind panel actions). */
-export const inject = ['slots', 'sessions']
+/** Browser services: the slots registry (toolview + dock), sessions (for
+ * the scoped conversation send behind panel actions), and slash (the /panel
+ * command source). */
+export const inject = ['slots', 'sessions', 'slash']

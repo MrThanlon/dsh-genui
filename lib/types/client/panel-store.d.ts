@@ -28,6 +28,33 @@ import type { GenuiSpec } from './spec.ts';
 export declare function publishPanelSpec(sessionId: string, spec: GenuiSpec | null, seq?: number): void;
 /** Current spec for a session (useSyncExternalStore getSnapshot). */
 export declare function getPanelSpec(sessionId: string): GenuiSpec | null;
+/**
+ * Merge an `append` spec into the current panel spec:
+ * - both sides single-tabs containers → merge BY TAB LABEL: items of
+ *   same-labelled tabs are appended, new labels are added (order preserved);
+ * - otherwise → plain item lists are appended to the tail.
+ * The previous title wins unless it was absent. `next` is returned as-is when
+ * there is nothing to merge into. Export for tests.
+ */
+export declare function mergePanelSpecs(prev: GenuiSpec | null, next: GenuiSpec): GenuiSpec;
+/**
+ * Append-publish: merge `spec` into the session's current panel spec and
+ * publish the merged result (same ordering rules as {@link publishPanelSpec}).
+ * Lets the model grow a panel incrementally without resending accumulated
+ * content, so a panel is never bounded by a single transfer's size.
+ *
+ * `sourceId` (the fence key) makes the merge idempotent PER SOURCE: repeated
+ * renderer invocations of the same completed fence merge once, while
+ * distinct fences (new messages) always merge. Clearing the panel resets the
+ * remembered source.
+ */
+export declare function publishPanelAppend(sessionId: string, spec: GenuiSpec, seq?: number, sourceId?: string): void;
 /** Subscribe to panel changes. Returns the disposer. */
 export declare function subscribePanel(listener: () => void): () => void;
+/** Request the panel dock to expand for a session (e.g. the /panel command). */
+export declare function requestPanelExpand(sessionId: string): void;
+/** Current expand token for a session (useSyncExternalStore getSnapshot). */
+export declare function getPanelExpandToken(sessionId: string): number;
+/** Subscribe to expand requests. Returns the disposer. */
+export declare function subscribePanelExpand(listener: () => void): () => void;
 //# sourceMappingURL=panel-store.d.ts.map

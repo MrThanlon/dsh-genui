@@ -182,7 +182,15 @@
 .liTitle { font-size: 12.5px; color: var(--dsw-alias-label-primary); font-weight: 600; }
 .liDesc { font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
 
-.tableWrap { border-radius: 8px; overflow: hidden; }
+.tableWrap {
+  border-radius: 8px;
+  /* A table whose nowrap cells exceed the column width must scroll, not clip
+     (mirrors the shell markdown table's .tableScroll pattern). */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+  min-width: 0;
+}
 .table { width: 100%; border-collapse: collapse; font-size: 12px; }
 .table th { text-align: left; padding: 7px 10px; color: var(--dsw-alias-label-tertiary); font-weight: 500; font-size: 11px; letter-spacing: 0.04em; text-transform: uppercase; border-bottom: 1px solid var(--dsw-alias-border-l1, var(--dsw-alias-border-l2, rgba(255,255,255,0.12))); white-space: nowrap; }
 .table td { padding: 7px 10px; border-bottom: 1px solid var(--dsw-alias-border-l1, var(--dsw-alias-border-l2, rgba(255,255,255,0.12))); color: var(--dsw-alias-label-secondary); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -628,7 +636,27 @@
 }
 
 .panelBody {
-  max-height: 360px;
+  /* Default height; a drag on the resize handle above overrides it inline.
+     max-height would cap the user's drag, so the fixed height lives here and
+     JS takes over once the user resizes. */
+  height: 360px;
   overflow-y: auto;
   padding: 0 16px 14px;
+}
+
+/* Drag strip on the panel's TOP edge (above the header): vertical resize
+   (ns-resize). touch-action: none keeps the pointer stream on touch
+   devices. Full width so it reads as the panel's top border. */
+.panelResizeHandle {
+  height: 6px;
+  border-radius: 3px;
+  cursor: ns-resize;
+  touch-action: none;
+  background: transparent;
+  transition: background 0.15s;
+}
+
+.panelResizeHandle:hover,
+.panelResizeHandleActive {
+  background: rgba(79, 142, 247, 0.35);
 }

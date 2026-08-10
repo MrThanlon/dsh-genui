@@ -3,6 +3,20 @@
  * in production. */
 export declare function assertSafeSvg(svg: string): void;
 /**
+ * Best-effort repair of common model-authored label mistakes in graph /
+ * flowchart sources, used only when the original fails to render:
+ * - drop backticks — lexically illegal in mermaid labels (models embed
+ *   ```dsh-ui style fences, which break the parser with "Lexical error");
+ * - strip `<br/>` tags, which require htmlLabels (never enabled here);
+ * - quote unquoted node labels containing CJK, spaces, or other characters
+ *   mermaid's bare-label grammar rejects (observed live: `A[模型生成 spec]`).
+ * Conservative by design: already-quoted labels, plain ASCII labels without
+ * spaces, and non-flowchart kinds are left untouched (apart from the
+ * backtick/`<br/>` sanitation above, which is harmless everywhere in a
+ * flowchart).
+ */
+export declare function repairMermaidSource(code: string): string;
+/**
  * Render mermaid source to an SVG string.
  * @param code - the mermaid diagram source.
  * @returns the rendered SVG markup (verified free of script/event handlers).

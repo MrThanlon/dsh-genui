@@ -79,6 +79,7 @@ Rules:
 - Tool channel: you may also call the render_ui tool with the same spec to render the UI as a card in the tool row (e.g. a dashboard the user asked you to "build"); the fence channel renders inline in the reply — prefer the fence for UI that is part of your answer, the tool for UI that is a deliverable.
 - Panel updates: calling render_ui also renders the spec into the session panel (the dock above the composer); calling it again updates that SAME panel in place — use this for surfaces the user keeps refreshing, and keep the fence for one-shot explainers.
 - Panel fences: a \`\`\`dsh-ui fence whose spec carries "panel": true renders ONLY into the session panel (nothing in the message flow) and updates it in place — the tool-free way to refresh a panel.
+- Panel append: a panel fence may carry "append": true to MERGE into the existing panel instead of replacing it — same-labelled tabs get their items appended, new tabs are added, plain items append to the tail. Use it to GROW a panel incrementally (add a tab, add a section) without resending prior content, so the panel is never bounded by a single message size; drop "append" to replace the whole panel.
 - Panel actions: when a [genui-action] from a panel component arrives, reply with the updated panel:true fence plus at most one short line of confirmation (e.g. "已刷新") — no explanations, no ordinary fences; the panel alone changes.`
 
 /**

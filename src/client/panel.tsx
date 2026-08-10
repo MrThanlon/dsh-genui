@@ -15,18 +15,26 @@
  * it takes a single row; expanded, the body caps its height and scrolls
  * internally, so the conversation stays scrollable either way.
  *
+ * The expanded body is vertically RESIZABLE: a drag strip between the header
+ * and the body adjusts the body height (clamped to sane bounds); the custom
+ * height survives expand/collapse cycles for the session's life.
+ *
  * Actions ride the same GenuiActionContext contract as inline fences: the
  * sendGenuiAction injection (built from the scoped conversation service in
  * apply) queues a [genui-action] user message back to the model.
  */
-import { useState, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import { GenuiActionContext, type GenuiActionHandler } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
-import { getPanelSpec, subscribePanel } from './panel-store.ts'
+import { getPanelExpandToken, getPanelSpec, subscribePanel, subscribePanelExpand } from './panel-store.ts'
 import css from './GenuiBlock.module.css'
+
+/** Resize bounds for the panel body, in px. */
+const PANEL_HEIGHT_MIN = 120
+const PANEL_HEIGHT_MAX = 600
 
 /** Injection face built per session in apply (scoped conversation send). */
 export interface GenuiPanelInjected {
@@ -44,10 +52,72 @@ export type GenuiPanelProps = PropsRuntime<'conversation.input.dock'> & GenuiPan
  */
 export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
   const spec = useSyncExternalStore(subscribePanel, () => getPanelSpec(sessionId))
+  const expandToken = useSyncExternalStore(subscribePanelExpand, () => getPanelExpandToken(sessionId))
   const [collapsed, setCollapsed] = useState(true)
+  // Custom body height from the resize drag; null = the CSS default (360px).
+  const [bodyHeight, setBodyHeight] = useState<number | null>(null)
+  const [resizing, setResizing] = useState(false)
+  const dragStart = useRef<{ y: number; height: number } | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
+
+  // Explicit expand requests (the /panel command) open the dock even when the
+  // user collapsed it manually: the monotone token guarantees a fresh request
+  // is never mistaken for the previous one.
+  useEffect(() => {
+    if (expandToken > 0) setCollapsed(false)
+  }, [expandToken])
+
+  // Cleanup safety net: if the component unmounts mid-drag (spec cleared),
+  // the window listeners must not outlive it.
+  useEffect(() => {
+    if (!resizing) return
+    return () => {
+      dragStart.current = null
+    }
+  }, [resizing])
+
+  /** Start a vertical resize drag on the panel's top edge. Dragging UP grows
+   * the panel (the edge moves toward the message flow); dragging down shrinks
+   * it. */
+  const startResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    // Track from the current committed height (state mirrors the drag, the
+    // CSS default otherwise) — no DOM measurement needed.
+    const startHeight = bodyHeight ?? 360
+    dragStart.current = { y: e.clientY, height: startHeight }
+    setResizing(true)
+    const onMove = (ev: PointerEvent): void => {
+      const start = dragStart.current
+      if (start === null) return
+      // Upward drag (clientY decreasing) grows the body height.
+      const next = Math.min(PANEL_HEIGHT_MAX, Math.max(PANEL_HEIGHT_MIN, start.height + (start.y - ev.clientY)))
+      setBodyHeight(next)
+    }
+    const onUp = (): void => {
+      dragStart.current = null
+      setResizing(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }, [bodyHeight])
+
   if (spec === null || spec.items.length === 0) return null
   return (
     <div className={css.panel} data-genui-panel>
+      {/* Resize grip on the panel's TOP EDGE (above the header): the drag
+          target the user described — the outermost top border, not a strip
+          under the title. */}
+      {!collapsed && (
+        <div
+          role="separator"
+          aria-orientation="horizontal"
+          aria-label="调整面板高度"
+          className={`${css.panelResizeHandle}${resizing ? ` ${css.panelResizeHandleActive}` : ''}`}
+          onPointerDown={startResize}
+        />
+      )}
       <div className={css.panelHeader}>
         <button
           type="button"
@@ -61,7 +131,12 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
         </button>
       </div>
       {!collapsed && (
-        <div className={css.panelBody}>
+        <div
+          ref={bodyRef}
+          className={css.panelBody}
+          data-genui-panel-body
+          style={bodyHeight === null ? undefined : { height: bodyHeight }}
+        >
           <GenuiActionContext.Provider value={sendGenuiAction}>
             <ErrorBoundary label="面板">
               <GenuiBlock spec={spec} />

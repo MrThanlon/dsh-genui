@@ -59,6 +59,14 @@ export interface GenuiSpec {
    * instead of the message flow (rendered by the same block, updated in
    * place on every publish). */
   panel?: boolean
+  /** Panel APPEND flag (meaningful only with `panel: true`): instead of
+   * replacing the session panel, merge this spec INTO the existing one —
+   * same-labelled tabs get their items appended, new tabs are added, plain
+   * item lists are appended to the tail. Lets the model grow a panel
+   * incrementally without resending (or truncating) the accumulated content.
+   * Applies only when the fence body is fully complete, so a streaming
+   * partial parse never double-merges. */
+  append?: boolean
   /** Root component list. */
   items: GenuiNode[]
 }

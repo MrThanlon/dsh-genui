@@ -64,6 +64,32 @@ describe('GenuiPanel dock', () => {
     expect(container.querySelector('[data-genui-panel]')).toBeNull()
   })
 
+  it('shows a resize handle on the top edge when expanded and resizes the body on drag', () => {
+    publishPanelSpec('s1', { title: 'T', items: [text('x')] })
+    const { container } = renderPanel()
+    // collapsed: no handle
+    expect(container.querySelector('[role="separator"][aria-label="调整面板高度"]')).toBeNull()
+    fireEvent.click(container.querySelector('[aria-expanded="false"]')!)
+    const handle = container.querySelector('[role="separator"][aria-label="调整面板高度"]')!
+    expect(handle).not.toBeNull()
+    const body = container.querySelector('[data-genui-panel-body]') as HTMLElement | null
+    expect(body).not.toBeNull()
+    // drag UP 100px (top edge toward the message flow): body grows
+    fireEvent.pointerDown(handle, { clientY: 100 })
+    fireEvent.pointerMove(window, { clientY: 0 })
+    expect(body!.style.height).toBe('460px')
+    // drag beyond the cap: clamped to PANEL_HEIGHT_MAX (600)
+    fireEvent.pointerMove(window, { clientY: -2000 })
+    expect(body!.style.height).toBe('600px')
+    // drag below the floor: clamped to PANEL_HEIGHT_MIN (120)
+    fireEvent.pointerMove(window, { clientY: 2000 })
+    expect(body!.style.height).toBe('120px')
+    // release: listeners gone, height persists
+    fireEvent.pointerUp(window)
+    fireEvent.pointerMove(window, { clientY: 300 })
+    expect(body!.style.height).toBe('120px')
+  })
+
   it('renders collapsed with the title, and reveals content on expand (per session)', () => {
     publishPanelSpec('s1', { title: '面板 A', items: [text('内容 A')] })
     publishPanelSpec('s2', { title: '面板 B', items: [text('内容 B')] })
