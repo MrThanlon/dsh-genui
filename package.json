@@ -21,10 +21,6 @@
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
-  "dshClient": {
-    "inject": [],
-    "platform": "web"
-  },
   "files": [
     "lib",
     "src",
@@ -91,6 +87,10 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [],
+      "platform": "web"
     }
   }
 }
