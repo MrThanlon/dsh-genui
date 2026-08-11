@@ -17,7 +17,7 @@ import { GenuiBlock } from './GenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { repairGenuiSpec } from './guard.ts'
 import { toolStateKey } from './interaction-store.ts'
-import { publishPanelSpec } from './panel-store.ts'
+import { applyPanelOperation } from './panel-store.ts'
 import css from './GenuiBlock.module.css'
 
 /**
@@ -33,12 +33,18 @@ export function GenuiToolView({ toolName, block, sessionId }: ToolCallViewProps)
   const meta = 'meta' in block ? block.meta : undefined
   const spec = useMemo(() => (meta === undefined ? null : repairGenuiSpec(meta)), [meta])
   useEffect(() => {
-    // Publish the settled spec to the session panel (dock), carrying the
-    // result block's message seq: replay/refresh re-renders of an older
-    // result cannot clobber a newer panel fence. Running calls publish
-    // nothing — the panel keeps its last content.
+    // Publish the settled spec to the session panel (dock) as a REPLACE op
+    // with the result block's call identity and message seq: the same block
+    // re-rendered (replay/refresh) is idempotent, and an older result can
+    // never clobber a newer panel fence (real ordering in the fold). Running
+    // calls publish nothing — the panel keeps its last content.
     if (spec !== null && spec.items.length > 0) {
-      publishPanelSpec(sessionId, spec, 'seq' in block ? block.seq : undefined)
+      applyPanelOperation(sessionId, {
+        sourceId: JSON.stringify(['render_ui', block.callId]),
+        order: ['seq' in block && typeof block.seq === 'number' ? block.seq : 0, -1, 0],
+        mode: 'replace',
+        spec,
+      })
     }
   }, [sessionId, spec, block])
   if (spec === null || spec.items.length === 0) {

@@ -17,7 +17,7 @@
 import type { SlashSource } from '@deepseek-ai/dsh-client-ui-slash/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { GenuiSpec } from './spec.ts'
-import { publishPanelSpec, requestPanelExpand } from './panel-store.ts'
+import { requestPanelExpand, setLocalPanel } from './panel-store.ts'
 
 /** Default panel content published by `/panel`: the component overview. */
 export const DEFAULT_PANEL_SPEC: GenuiSpec = {
@@ -47,14 +47,17 @@ export const DEFAULT_PANEL_SPEC: GenuiSpec = {
   ],
 }
 
-/** Shared command application: publish the default spec (and expand) or clear. */
+/** Shared command application: apply the local override (default panel +
+ * expand, or clear). The override is the fold base and shields against every
+ * replay at/below the highest message seq seen so far; the next later real
+ * tool/fence operation replaces or merges into it as usual. */
 function applyPanelCommand(sessionId: string, args: string): void {
   const cmd = args.trim().toLowerCase()
   if (cmd === 'clear' || cmd === 'off' || cmd === 'close') {
-    publishPanelSpec(sessionId, null)
+    setLocalPanel(sessionId, null)
     return
   }
-  publishPanelSpec(sessionId, DEFAULT_PANEL_SPEC)
+  setLocalPanel(sessionId, DEFAULT_PANEL_SPEC)
   requestPanelExpand(sessionId)
 }
 

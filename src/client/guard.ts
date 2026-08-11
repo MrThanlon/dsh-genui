@@ -670,6 +670,45 @@ export function repairGenuiSpec(value: unknown): GenuiSpec | null {
 /* ---------------- validation ---------------- */
 
 /**
+ * Count the nodes of a spec tree (every item, descending into tabs /
+ * accordion / file-tree containers — the same descent `validateGenuiSpec`
+ * walks). Shared by the panel fold (node-budget gate) and validation, so
+ * the panel never runs a second, divergent traversal. `cap` bounds the walk
+ * for hostile inputs; the panel passes `PANEL_LIMITS.maxNodes + 1` to detect
+ * overflow without counting the whole tree.
+ */
+export function countGenuiNodes(value: unknown, cap = Number.POSITIVE_INFINITY): number {
+  let count = 0
+  const walk = (list: unknown): void => {
+    if (!Array.isArray(list)) return
+    for (const item of list) {
+      if (count >= cap) return
+      count += 1
+      const v = obj(item)
+      if (v === undefined) continue
+      if (v.type === 'tabs' && Array.isArray(v.tabs)) {
+        for (const t of v.tabs) {
+          if (count >= cap) return
+          const to = obj(t)
+          if (to !== undefined) walk(to.items)
+        }
+      } else if (v.type === 'accordion' && Array.isArray(v.items)) {
+        for (const it of v.items) {
+          if (count >= cap) return
+          const io = obj(it)
+          if (io !== undefined) walk(io.items)
+        }
+      } else if (v.type === 'file-tree' && Array.isArray(v.items)) {
+        walk(v.items)
+      }
+    }
+  }
+  const root = obj(value)
+  walk(root === undefined ? [] : root.items)
+  return count
+}
+
+/**
  * Validate a raw spec value against the white list and limits, collecting
  * human-readable problems. Unlike repair this never mutates: it is a
  * diagnostic for tests and tooling. Unknown `type`s are reported (a plugin
