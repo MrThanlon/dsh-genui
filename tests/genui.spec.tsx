@@ -106,3 +106,61 @@ describe('GenUI fence rendering', () => {
     expect(container.querySelector('pre')).not.toBeNull()
   })
 })
+
+describe('GenUI chart skeleton (design system v2)', () => {
+  it('gives bar charts a plot area with baseline + 25/50/75% gridlines and a separate label row', () => {
+    const spec = {
+      items: [{ type: 'chart', data: [
+        { label: '一', value: 42 }, { label: '二', value: 58 }, { label: '三', value: 49 },
+      ] }],
+    }
+    const { container } = render(<MarkdownText text={fenced(spec)} />)
+    const plot = container.querySelector('[class*="chartPlot"]')
+    expect(plot).not.toBeNull()
+    // 1 baseline + 3 gridlines inside the plot area.
+    expect(plot?.querySelectorAll('[class*="baseline"]')).toHaveLength(1)
+    expect(plot?.querySelectorAll('[class*="gridline"]')).toHaveLength(3)
+    // Value annotations live inside the plot; category labels moved to the
+    // dedicated label row below the axis (never crossing the lines).
+    expect(plot?.querySelectorAll('[class*="barValue"]')).toHaveLength(3)
+    expect(plot?.querySelectorAll('[class*="barLabel"]')).toHaveLength(0)
+    const labels = container.querySelector('[class*="chartLabels"]')
+    expect(labels?.querySelectorAll('[class*="barLabel"]')).toHaveLength(3)
+    expect(container.querySelectorAll('[class*="barFill"]')).toHaveLength(3)
+  })
+
+  it('renders per-bar values in grouped charts inside the plot', () => {
+    const spec = {
+      items: [{ type: 'chart', kind: 'bars', series: [
+        { label: 'A', data: [{ label: '一', value: 30 }, { label: '二', value: 40 }] },
+        { label: 'B', data: [{ label: '一', value: 60 }, { label: '二', value: 20 }] },
+      ] }],
+    }
+    const { container } = render(<MarkdownText text={fenced(spec)} />)
+    const plot = container.querySelector('[class*="chartPlot"]')
+    expect(plot).not.toBeNull()
+    expect(plot?.querySelectorAll('[class*="baseline"]')).toHaveLength(1)
+    // 2 groups × 2 series = 4 per-bar value annotations.
+    expect(plot?.querySelectorAll('[class*="groupValue"]')).toHaveLength(4)
+    expect(plot?.querySelectorAll('[class*="groupedFill"]')).toHaveLength(4)
+    const labels = container.querySelector('[class*="chartLabels"]')
+    expect(labels?.querySelectorAll('[class*="barLabel"]')).toHaveLength(2)
+  })
+
+  it('renders a Y axis with four ticks and gridlines on line charts', () => {
+    const spec = {
+      items: [{ type: 'chart', kind: 'line', data: [
+        { label: '一', value: 10 }, { label: '二', value: 30 }, { label: '三', value: 20 },
+      ] }],
+    }
+    const { container } = render(<MarkdownText text={fenced(spec)} />)
+    const svg = container.querySelector('[class*="lineChart"] svg')
+    expect(svg).not.toBeNull()
+    // 4 ticks (0/1/2/3 → min..max) each with a gridline + label; the axis
+    // line (tick 0) uses the stronger class.
+    expect(svg?.querySelectorAll('[class*="lineGrid"]')).toHaveLength(4)
+    expect(svg?.querySelectorAll('[class*="lineGridAxis"]')).toHaveLength(1)
+    expect(svg?.querySelectorAll('[class*="lineTick"]')).toHaveLength(4)
+    expect(svg?.querySelectorAll('[class*="linePath"]')).toHaveLength(1)
+  })
+})

@@ -229,23 +229,27 @@ describe('v2.5: guard coverage', () => {
     expect((items[3] as { groups?: string[] }).groups).toEqual(['g1', 'g2'])
   })
 
-  it('repair drops a submit without label or action', () => {
+  it('repair keeps a submit without action (local grading) and drops one without label', () => {
     const spec = repairGenuiSpec({ items: [
-      { type: 'submit', groups: ['g1'] },
-      { type: 'submit', label: '交卷' },
+      { type: 'submit', groups: ['g1'] }, // no label → dropped
+      { type: 'submit', label: '交卷' }, // no action → KEPT (local grading needs no round trip)
       { type: 'submit', label: '交卷', action: 'ok' },
     ] })
     const items = spec!.items as Array<Record<string, unknown>>
-    expect(items).toHaveLength(1)
-    expect(items[0]!.action).toBe('ok')
+    expect(items).toHaveLength(2)
+    expect(items[0]!.action).toBeUndefined()
+    expect(items[1]!.action).toBe('ok')
   })
 
-  it('validate reports submit label/action requirements', () => {
+  it('validate requires submit label but treats action as optional', () => {
     const bad = validateGenuiSpec({ items: [{ type: 'submit' }] })
     expect(bad.ok).toBe(false)
     expect(bad.errors.join('\n')).toContain("type 'submit' requires label")
-    expect(bad.errors.join('\n')).toContain("type 'submit' requires action")
-    const good = validateGenuiSpec({ items: [{ type: 'submit', label: '交卷', action: 'grade' }] })
+    // A label-only submit is valid: when questions carry `answer` data the
+    // click grades locally with zero round trip — no action needed.
+    const good = validateGenuiSpec({ items: [{ type: 'submit', label: '交卷' }] })
     expect(good.ok).toBe(true)
+    const withAction = validateGenuiSpec({ items: [{ type: 'submit', label: '交卷', action: 'grade' }] })
+    expect(withAction.ok).toBe(true)
   })
 })

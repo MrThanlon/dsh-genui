@@ -314,10 +314,15 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
     }
     case 'submit': {
       const label = str(v.label, GENUI_LIMITS.maxString)
+      // action is OPTIONAL: local grading (any question carries `answer`)
+      // needs no round trip, so a submit without an action is valid. It only
+      // becomes semantically required when no local answers exist — the
+      // renderer disables the button then (honest affordance).
       const action = str(v.action, 200)
-      if (label === undefined || action === undefined) return null
+      if (label === undefined) return null
       return {
-        type: 'submit', label, action,
+        type: 'submit', label,
+        ...opt('action', action),
         ...opt('resetAction', str(v.resetAction, 200)),
         ...opt('groups', repairStrings(v.groups, GENUI_LIMITS.maxOptions, 200)),
       }
@@ -788,7 +793,9 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       break
     case 'submit':
       if (typeof v.label !== 'string') errors.push(`${at}: type 'submit' requires label (string)`)
-      if (typeof v.action !== 'string') errors.push(`${at}: type 'submit' requires action (string)`)
+      // action is optional (local grading needs no round trip); the
+      // renderer disables the button when it is absent AND no question
+      // carries local `answer` data.
       break
     case 'badge':
       if (typeof v.label !== 'string') errors.push(`${at}: type 'badge' requires label (string)`)

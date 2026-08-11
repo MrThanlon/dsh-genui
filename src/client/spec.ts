@@ -350,10 +350,15 @@ export interface GenuiSubmit {
   type: 'submit'
   label: string
   /**
-   * Fallback action name (fired only when no question has local `answer`
-   * data, or as the reset hook if `resetAction` is absent — see below).
+   * Optional action name. Local-first: when ANY question in scope carries
+   * `answer` data the click grades IN PLACE with zero model round trip, so
+   * no action is needed — the spec stays valid without one. Only when NO
+   * question has local answers does the submit need an action to collect
+   * `{type:'submit', answers, total, answered}`; without one the button
+   * renders disabled (honest affordance). Also fired as the reset hook if
+   * `resetAction` is absent.
    */
-  action: string
+  action?: string
   /**
    * v2.6: optional action fired when the user clicks "重新作答" after a
    * local grading (e.g. to tell the model the paper was redone). Absent =

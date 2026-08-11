@@ -35,12 +35,33 @@ export interface GenuiBlockProps {
   stateKey?: string | undefined
 }
 
-/** Deterministic avatar color by name hash. */
-const AVATAR_COLORS = ['#4f8ef7', '#5b8def', '#3d9e8f', '#c9a24b', '#c96a5b', '#8a7bb8', '#6b8fa3', '#7d9e6b']
+/** Deterministic avatar color by name hash. Host static tokens ONLY —
+ * design system v2: no off-brand hexes, the palette always matches the
+ * theme's families (deepseek/blue/green/amber/red/neutral). */
+const AVATAR_COLORS = [
+  'var(--dsw-static-deepseek-400)',
+  'var(--dsw-static-deepseek-450)',
+  'var(--dsw-static-blue-450)',
+  'var(--dsw-static-green-400)',
+  'var(--dsw-static-amber-400)',
+  'var(--dsw-static-red-400)',
+  'var(--dsw-static-deepseek-300)',
+  'var(--dsw-static-neutral-bluish-400)',
+]
 
-/** Categorical palette for multi-series charts: muted, dark-theme friendly,
- * high separation (not a rainbow). Single series keep the brand accent. */
-const CHART_COLORS = ['#4f8ef7', '#3ecf8e', '#e0a458', '#e07b6a', '#9a86d8', '#5cb8b8', '#d487b6', '#8aaa6e']
+/** Categorical palette for multi-series charts: host static tokens only,
+ * same source of truth as the avatar palette — high separation, muted,
+ * dark-theme friendly. Single series keep the brand accent. */
+const CHART_COLORS = [
+  'var(--dsw-static-deepseek-400)',
+  'var(--dsw-static-green-400)',
+  'var(--dsw-static-amber-400)',
+  'var(--dsw-static-red-400)',
+  'var(--dsw-static-blue-450)',
+  'var(--dsw-static-deepseek-450)',
+  'var(--dsw-static-neutral-bluish-400)',
+  'var(--dsw-static-deepseek-300)',
+]
 
 /** Series color: explicit color wins; multi-series auto-assign from the palette. */
 const seriesColor = (i: number, n: number, c?: string): string | undefined =>
@@ -162,7 +183,7 @@ function renderNode(
     }
     case 'grid': {
       return (
-        <div key={key} className={css.grid} style={{ gridTemplateColumns: `repeat(${Math.max(1, node.cols)}, 1fr)` }}>
+        <div key={key} className={css.grid} style={{ gridTemplateColumns: `repeat(${Math.max(1, node.cols)}, minmax(0, 1fr))` }}>
           {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1, answers))}
         </div>
       )
@@ -455,28 +476,37 @@ function BarsNode({ chart }: { chart: GenuiChart }) {
     const max = Math.max(...grouped.flatMap(s => s.data.map(d => Number(d.value) || 0)), 1)
     return (
       <div className={css.chart}>
-        {labels.map((label, i) => (
-          <div key={i} className={css.barCol}>
-            <div className={css.groupedBars}>
-              {grouped.map((s, si) => {
-                const d = s.data[i]
-                const h = d === undefined ? 0 : Math.round((Number(d.value) / max) * 100)
-                return (
-                  <div
-                    key={si}
-                    className={css.groupedFill}
-                    style={{
-                      height: `${h}%`,
-                      background: seriesColor(si, grouped.length, s.color) ?? 'var(--dsw-alias-state-business-primary, #4f8ef7)',
-                    }}
-                    title={s.label}
-                  />
-                )
-              })}
+        <div className={css.chartPlot}>
+          {[0, 25, 50, 75].map(p => (
+            <span key={p} className={p === 0 ? css.baseline : css.gridline} style={{ bottom: `${p}%` }} />
+          ))}
+          {labels.map((_, i) => (
+            <div key={i} className={css.barCol}>
+              <div className={css.groupedBars}>
+                {grouped.map((s, si) => {
+                  const d = s.data[i]
+                  // Cap at 82% so the per-bar value annotation stays inside the plot.
+                  const h = d === undefined ? 0 : Math.min(Math.round((Number(d.value) / max) * 100), 82)
+                  return (
+                    <div key={si} className={css.groupedBar} title={s.label}>
+                      <span className={css.groupValue}>{d === undefined ? '' : String(d.value)}</span>
+                      <div
+                        className={css.groupedFill}
+                        style={{
+                          height: `${h}%`,
+                          background: seriesColor(si, grouped.length, s.color) ?? 'var(--dsw-alias-state-business-primary, #4f8ef7)',
+                        }}
+                      />
+                    </div>
+                  )
+                })}
+              </div>
             </div>
-            <span className={css.barLabel}>{label}</span>
-          </div>
-        ))}
+          ))}
+        </div>
+        <div className={css.chartLabels}>
+          {labels.map(label => <span key={label} className={css.barLabel}>{label}</span>)}
+        </div>
       </div>
     )
   }
@@ -484,39 +514,67 @@ function BarsNode({ chart }: { chart: GenuiChart }) {
   const max = Math.max(...data.map(d => Number(d.value) || 0), 1)
   return (
     <div className={css.chart}>
-      {data.map((d, i) => {
-        const h = Math.round((Number(d.value) / max) * 100)
-        return (
-          <div key={i} className={css.barCol}>
-            <span className={css.barValue}>{String(d.value)}</span>
-            <div className={css.barFill} style={{ height: `${h}%`, ...(d.color !== undefined ? { background: d.color } : {}) }} />
-            <span className={css.barLabel}>{d.label}</span>
-          </div>
-        )
-      })}
+      <div className={css.chartPlot}>
+        {[0, 25, 50, 75].map(p => (
+          <span key={p} className={p === 0 ? css.baseline : css.gridline} style={{ bottom: `${p}%` }} />
+        ))}
+        {data.map((d, i) => {
+          // Cap at 85% so the value annotation always stays inside the plot.
+          const h = Math.min(Math.round((Number(d.value) / max) * 100), 85)
+          return (
+            <div key={i} className={css.barCol}>
+              <span className={css.barValue}>{String(d.value)}</span>
+              <div className={css.barFill} style={{ height: `${h}%`, ...(d.color !== undefined ? { background: d.color } : {}) }} />
+            </div>
+          )
+        })}
+      </div>
+      <div className={css.chartLabels}>
+        {data.map(d => <span key={d.label} className={css.barLabel}>{d.label}</span>)}
+      </div>
     </div>
   )
 }
 
-/** Line: polyline over a fixed-height plot area. */
+/** Line: polyline over a fixed-height plot area with a readable Y axis —
+ * four evenly spaced gridlines + tick labels (design system v2 skeleton). */
 function LineChartNode({ chart }: { chart: GenuiChart }) {
   const data = chart.data.slice(0, GENUI_LIMITS.maxChartPoints)
   const W = 460
-  const H = 140
-  const pad = 8
+  const H = 150
+  const padL = 36
+  const padR = 8
+  const padT = 10
+  const padB = 6
   const max = Math.max(...data.map(d => Number(d.value) || 0), 1)
   const min = Math.min(...data.map(d => Number(d.value) || 0), 0)
   const span = max - min || 1
   const n = Math.max(data.length - 1, 1)
   const pt = (i: number, v: number): [number, number] => [
-    pad + (i / n) * (W - pad * 2),
-    pad + (1 - (v - min) / span) * (H - pad * 2),
+    padL + (i / n) * (W - padL - padR),
+    padT + (1 - (v - min) / span) * (H - padT - padB),
   ]
   const d = data.map((datum, i) => pt(i, Number(datum.value) || 0))
   const path = d.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(' ')
+  const ticks = [0, 1, 2, 3].map(i => min + (span * i) / 3)
+  const formatTick = (t: number): string => {
+    const abs = Math.abs(t)
+    if (abs >= 1000) return `${(t / 1000).toFixed(abs % 1000 === 0 ? 0 : 1)}k`
+    if (Number.isInteger(t)) return String(t)
+    return t.toFixed(1)
+  }
   return (
     <div className={css.lineChart}>
       <svg width="100%" viewBox={`0 0 ${W} ${H}`}>
+        {ticks.map((t, i) => {
+          const y = padT + (1 - (t - min) / span) * (H - padT - padB)
+          return (
+            <g key={i}>
+              <line x1={padL} x2={W - padR} y1={y} y2={y} className={i === 0 ? css.lineGridAxis : css.lineGrid} />
+              <text x={padL - 6} y={y + 3} textAnchor="end" className={css.lineTick}>{formatTick(t)}</text>
+            </g>
+          )
+        })}
         {data.map((datum, i) => {
           const [x, y] = pt(i, Number(datum.value) || 0)
           return <circle key={i} cx={x} cy={y} r={3} className={css.lineDot} fill={datum.color ?? undefined} />
@@ -548,7 +606,7 @@ function DonutNode({ chart }: { chart: GenuiChart }) {
             <circle
               key={i}
               cx="60" cy="60" r={R} fill="none" strokeWidth="14"
-              stroke={seriesColor(i, data.length, d.color) ?? 'var(--dsw-alias-state-business-primary, #4f8ef7)'}
+              style={{ stroke: seriesColor(i, data.length, d.color) ?? 'var(--dsw-alias-state-business-primary, #4f8ef7)' }}
               strokeDasharray={`${len} ${C - len}`}
               strokeDashoffset={-offset}
               transform="rotate(-90 60 60)"
@@ -743,7 +801,12 @@ function SubmitNode({ node, onAction, answers }: {
   // Local grading is possible when ANY in-scope question carries answers.
   const canGradeLocally = scope.some(g => meta[g]?.answer !== undefined)
   const submitted = answers?.locked === true
-  const ready = answered > 0 && answered >= total && (canGradeLocally || onAction !== undefined)
+  // Ready = enough answers AND the click can do something: either local
+  // grading, or a real action name + provider. A submit with neither is a
+  // display-only control — honest disabled affordance (action is optional:
+  // local grading needs no round trip).
+  const ready = answered > 0 && answered >= total
+    && (canGradeLocally || (node.action !== undefined && onAction !== undefined))
 
   if (submitted) {
     // ── local grading result ──
@@ -809,7 +872,9 @@ function SubmitNode({ node, onAction, answers }: {
           if (canGradeLocally) {
             // Local grading: immediate in-place result, no model round trip.
             answers?.setLocked(true)
-          } else if (onAction !== undefined) {
+          } else if (node.action !== undefined && onAction !== undefined) {
+            // `ready` already guarantees this branch, but the narrow keeps
+            // the optional-action type honest.
             onAction(node.action, {
               type: 'submit',
               answers: recorded,
@@ -1289,7 +1354,7 @@ function useDebouncedAction(onAction: GenuiBlockProps['onAction'] | undefined): 
  * carries no items (the fence renderer already refused non-specs before us).
  */
 export const GenuiBlock = memo(function GenuiBlock({ spec, stateKey }: GenuiBlockProps) {
-  const gap = spec.gap ?? 14
+  const gap = spec.gap ?? 16
   const onAction = useDebouncedAction(useGenuiAction())
   // v2.5/v2.6 answers registry: grouped radios record selections + question
   // metadata here; `submit` nodes grade locally (locked until 重新作答) or
