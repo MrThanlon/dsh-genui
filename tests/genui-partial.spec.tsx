@@ -2,9 +2,9 @@
 // Partial genui parsing: while the fence body grows, finished components
 // must extract and render; unfinished tails must drop.
 import { cleanup, render } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
-import { parsePartialGenuiSpec } from '../src/client/parse-partial.ts'
+import { parsePartialGenuiSpec, collectPartialCandidates, setMaxPartialRepairAttempts } from '../src/client/parse-partial.ts'
 
 afterEach(cleanup)
 
@@ -73,5 +73,45 @@ describe('partial render while streaming', () => {
     const r2 = render(<MarkdownText text={head} streaming />)
     expect(r2.container.textContent).toContain('A')
     expect(r2.container.textContent).not.toContain('B')
+  })
+})
+
+describe('bounded repair (single scan, capped attempts)', () => {
+  afterEach(() => {
+    setMaxPartialRepairAttempts(32)
+  })
+
+  it('scans the pathological 24 KB / 8000-object input once, ≤32 candidates', () => {
+    const items = Array.from({ length: 8000 }, (_, i) => `{"type":"text","content":"c${i}"}`).join(',')
+    const raw = `{"items":[${items}`
+    const { candidates, scannedChars } = collectPartialCandidates(raw)
+    expect(scannedChars).toBe(raw.length) // one full pass, no re-scans
+    expect(candidates.length).toBeLessThanOrEqual(32)
+  })
+
+  it('keeps total JSON.parse calls within 1 full + the repair budget', () => {
+    const raw = '{"items":[' + Array.from({ length: 8000 }, (_, i) => `{"type":"text","content":"c${i}"}`).join(',') + ',"type":"bu'
+    const parseSpy = vi.spyOn(JSON, 'parse')
+    const result = parsePartialGenuiSpec(raw)
+    expect(result).not.toBeNull()
+    // The bound is an UPPER cap (1 full + the repair budget), not an exact
+    // count — the pathological input usually recovers on the first candidate.
+    expect(parseSpy.mock.calls.length).toBeLessThanOrEqual(33)
+    parseSpy.mockRestore()
+  })
+
+  it('respects an injected smaller repair budget', () => {
+    setMaxPartialRepairAttempts(4)
+    const raw = '{"items":[' + Array.from({ length: 8000 }, (_, i) => `{"type":"text","content":"c${i}"}`).join(',') + ',"type":"bu'
+    const parseSpy = vi.spyOn(JSON, 'parse')
+    parsePartialGenuiSpec(raw)
+    expect(parseSpy.mock.calls.length).toBeLessThanOrEqual(5) // 1 full + 4 repair attempts
+    parseSpy.mockRestore()
+  })
+
+  it('still recovers the ordinary streaming prefixes (no regression)', () => {
+    expect(parsePartialGenuiSpec('{"items":[{"type":"text","content":"A"},{"type":"stat","labe')?.items).toHaveLength(1)
+    expect(parsePartialGenuiSpec('{"items":[{"type":"text","content":"A"},')?.items).toHaveLength(1)
+    expect(parsePartialGenuiSpec('{"items":[{"type":"text","content":"a {b} [c] }"},{"type":"but')?.items).toHaveLength(1)
   })
 })

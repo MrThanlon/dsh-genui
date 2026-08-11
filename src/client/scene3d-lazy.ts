@@ -104,6 +104,10 @@ export async function mountScene(container: HTMLElement, scene: GenuiScene3D): P
   }
 
   // Orbit: simple drag-to-rotate, wheel to zoom (no external controls dep).
+  // EVENT-DRIVEN rendering: one render after init, one per orbit change —
+  // a static scene never runs a requestAnimationFrame loop, so an idle
+  // scene costs zero GPU/battery. Pointer capture keeps all drag events on
+  // the canvas (no window listeners, nothing to leak on unmount).
   let isDragging = false
   let prevX = 0
   let prevY = 0
@@ -117,13 +121,14 @@ export async function mountScene(container: HTMLElement, scene: GenuiScene3D): P
       radius * Math.sin(phi) * Math.sin(theta),
     )
     camera.lookAt(0, 0, 0)
+    renderer.render(threeScene, camera)
   }
-  orbit()
 
   const onPointerDown = (e: PointerEvent): void => {
     isDragging = true
     prevX = e.clientX
     prevY = e.clientY
+    try { canvas.setPointerCapture(e.pointerId) } catch { /* jsdom / capture unsupported */ }
   }
   const onPointerMove = (e: PointerEvent): void => {
     if (!isDragging) return
@@ -133,7 +138,11 @@ export async function mountScene(container: HTMLElement, scene: GenuiScene3D): P
     prevY = e.clientY
     orbit()
   }
-  const onPointerUp = (): void => { isDragging = false }
+  const onPointerEnd = (e: PointerEvent): void => {
+    if (!isDragging) return
+    isDragging = false
+    try { canvas.releasePointerCapture(e.pointerId) } catch { /* jsdom */ }
+  }
   const onWheel = (e: WheelEvent): void => {
     e.preventDefault()
     radius = Math.max(2.5, Math.min(14, radius + e.deltaY * 0.005))
@@ -141,22 +150,18 @@ export async function mountScene(container: HTMLElement, scene: GenuiScene3D): P
   }
   const canvas = renderer.domElement
   canvas.addEventListener('pointerdown', onPointerDown)
-  window.addEventListener('pointermove', onPointerMove)
-  window.addEventListener('pointerup', onPointerUp)
+  canvas.addEventListener('pointermove', onPointerMove)
+  canvas.addEventListener('pointerup', onPointerEnd)
+  canvas.addEventListener('pointercancel', onPointerEnd)
   canvas.addEventListener('wheel', onWheel, { passive: false })
 
-  let raf = 0
-  const animate = (): void => {
-    raf = requestAnimationFrame(animate)
-    renderer.render(threeScene, camera)
-  }
-  animate()
+  orbit() // initial render; afterwards only interactions re-render.
 
   return () => {
-    cancelAnimationFrame(raf)
     canvas.removeEventListener('pointerdown', onPointerDown)
-    window.removeEventListener('pointermove', onPointerMove)
-    window.removeEventListener('pointerup', onPointerUp)
+    canvas.removeEventListener('pointermove', onPointerMove)
+    canvas.removeEventListener('pointerup', onPointerEnd)
+    canvas.removeEventListener('pointercancel', onPointerEnd)
     canvas.removeEventListener('wheel', onWheel)
     renderer.dispose()
     if (renderer.domElement.parentElement === container) {

@@ -77,20 +77,36 @@ describe('GenuiPanel dock', () => {
     expect(handle).not.toBeNull()
     const body = container.querySelector('[data-genui-panel-body]') as HTMLElement | null
     expect(body).not.toBeNull()
-    // drag UP 100px (top edge toward the message flow): body grows
-    fireEvent.pointerDown(handle, { clientY: 100 })
-    fireEvent.pointerMove(window, { clientY: 0 })
+    // drag UP 100px (top edge toward the message flow): body grows; events
+    // ride the handle via pointer capture (no window listeners)
+    fireEvent.pointerDown(handle, { clientY: 100, pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientY: 0, pointerId: 1 })
     expect(body!.style.height).toBe('460px')
     // drag beyond the cap: clamped to PANEL_HEIGHT_MAX (600)
-    fireEvent.pointerMove(window, { clientY: -2000 })
+    fireEvent.pointerMove(handle, { clientY: -2000, pointerId: 1 })
     expect(body!.style.height).toBe('600px')
     // drag below the floor: clamped to PANEL_HEIGHT_MIN (120)
-    fireEvent.pointerMove(window, { clientY: 2000 })
+    fireEvent.pointerMove(handle, { clientY: 2000, pointerId: 1 })
     expect(body!.style.height).toBe('120px')
     // release: listeners gone, height persists
-    fireEvent.pointerUp(window)
-    fireEvent.pointerMove(window, { clientY: 300 })
+    fireEvent.pointerUp(handle, { pointerId: 1 })
+    fireEvent.pointerMove(handle, { clientY: 300, pointerId: 1 })
     expect(body!.style.height).toBe('120px')
+  })
+
+  it('pointercancel ends the drag and leaves no listeners behind', () => {
+    publishPanelSpec('s1', { title: 'T', items: [text('x')] })
+    const { container, unmount } = renderPanel()
+    fireEvent.click(container.querySelector('[aria-expanded="false"]')!)
+    const handle = container.querySelector('[role="separator"][aria-label="调整面板高度"]')!
+    const body = container.querySelector('[data-genui-panel-body]') as HTMLElement | null
+    fireEvent.pointerDown(handle, { clientY: 200, pointerId: 7 })
+    fireEvent.pointerMove(handle, { clientY: 100, pointerId: 7 })
+    expect(body!.style.height).toBe('460px')
+    fireEvent.pointerCancel(handle, { pointerId: 7 })
+    fireEvent.pointerMove(handle, { clientY: 0, pointerId: 7 })
+    expect(body!.style.height).toBe('460px') // drag ended, no further changes
+    unmount() // must not throw (no dangling window listeners)
   })
 
   it('renders collapsed with the title, and reveals content on expand (per session)', () => {

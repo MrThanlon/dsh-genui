@@ -4,42 +4,82 @@
  * top-down as the model writes — each finished component appears the moment
  * its JSON object closes, instead of the whole block waiting for the fence.
  *
- * Strategy (tolerant, white-list-agnostic):
- * 1. Full parse first (the common settled case).
- * 2. Scan for every position where all brackets are balanced; try each as a
- *    complete prefix (longest first). This covers trailing junk like a
- *    closing fence or a stray comma.
- * 3. If nothing parses, walk backward from each closing `}`: truncate there
- *    and close the remaining open brackets. This yields the longest run of
- *    finished array elements — an unfinished trailing element is dropped.
+ * Strategy (tolerant, white-list-agnostic, BOUNDED):
+ * 1. Full parse first (the common settled case) — at most one.
+ * 2. ONE left-to-right scan collects the repair candidates: every position
+ *    where the prefix is bracket-balanced (trailing comma / fence tail) and
+ *    every `}` object close within the depth budget (an unfinished trailing
+ *    element, closed by appending the remaining brackets). The ring buffer
+ *    keeps only the longest-direction candidates (≤ MAX_PARTIAL_REPAIR_ATTEMPTS),
+ *    so the work is O(n) with a hard parse-attempt cap — a pathological
+ *    input can never re-scan prefixes or burn seconds in JSON.parse.
+ * 3. Candidates are tried longest first; the first that parses as a GenUI
+ *    spec wins. Nothing parses → null (streaming partial, wait for more).
  *
  * The result is only ever a PREFIX of the intended spec, so it is always
  * safe to render: components already present are complete and valid.
+ *
+ * `ponytail:` the 32-candidate / 33-parse budget is the protection ceiling
+ * for depth 8 / 200 nodes; only real streaming samples proving a recovery
+ * shortfall justify switching to a tokenizing parser.
  */
+import { GENUI_LIMITS } from './guard.ts'
 import { isGenuiSpec, type GenuiSpec } from './spec.ts'
 
-/** One pass over a JSON-ish string tracking bracket balance, skipping strings. */
-interface BracketScan {
-  /** Remaining open brackets from bottom to top, or null when unbalanced. */
-  stack: string[] | null
-  /** Positions (exclusive) where the prefix ends with balanced brackets. */
-  balancedEnds: number[]
+/** Default repair-candidate budget (adjustable; see the design doc). */
+export const MAX_PARTIAL_REPAIR_ATTEMPTS = 32
+
+let repairAttemptsLimit = MAX_PARTIAL_REPAIR_ATTEMPTS
+
+/** Override the repair-candidate budget (tests / tuning). */
+export function setMaxPartialRepairAttempts(n: number): void {
+  repairAttemptsLimit = n
 }
 
-function scanBrackets(text: string): BracketScan {
+/** One repair candidate: a balanced prefix of the body ending at `end`,
+ *  plus the closing brackets to append (empty when already balanced). */
+export interface PartialCandidate {
+  end: number
+  closingSuffix: string
+}
+
+/** Single left-to-right pass over the raw body. Tracks the bracket stack
+ *  (skipping strings/escapes correctly) and records:
+ *  - every position where the prefix is fully balanced (trailing comma or
+ *    fence tail) — candidate with an empty closing suffix;
+ *  - every `}` object close whose remaining depth fits the spec budget —
+ *    candidate with the remaining brackets closed (an unfinished trailing
+ *    element).
+ *  Candidates are ring-buffered to the attempts budget (the LAST pushes are
+ *  the longest), then returned longest-first, deduplicated by end. The scan
+ *  stops at the first unbalanced close — earlier balanced prefixes remain
+ *  valid candidates.
+ *
+ * Exposed for tests (the `scannedChars` diagnostic); not exported from the
+ * package entry. The parser calls this exactly once per parse.
+ */
+export function collectPartialCandidates(raw: string): { candidates: PartialCandidate[]; scannedChars: number } {
   const stack: string[] = []
-  const balancedEnds: number[] = []
+  const candidates: PartialCandidate[] = []
+  const push = (c: PartialCandidate): void => {
+    if (candidates.length >= repairAttemptsLimit) candidates.shift()
+    candidates.push(c)
+  }
   let inString = false
   let escaped = false
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]!
+  let scanned = 0
+  for (; scanned < raw.length; scanned++) {
+    const ch = raw[scanned]!
     if (inString) {
       if (escaped) escaped = false
       else if (ch === '\\') escaped = true
       else if (ch === '"') inString = false
       continue
     }
-    if (ch === '"') { inString = true; continue }
+    if (ch === '"') {
+      inString = true
+      continue
+    }
     if (ch === '{' || ch === '[') {
       stack.push(ch)
       continue
@@ -48,14 +88,36 @@ function scanBrackets(text: string): BracketScan {
       const open = stack.pop()
       const expects = ch === '}' ? '{' : '['
       if (open !== expects) {
-        // Unbalanced (mismatched or stray close): the tail is unusable.
-        return { stack: null, balancedEnds }
+        // Unbalanced (mismatched or stray close): the tail is unusable, but
+        // balanced prefixes recorded earlier stay valid. Stop scanning.
+        break
       }
-      if (stack.length === 0) balancedEnds.push(i + 1)
+      if (ch === '}' && stack.length <= GENUI_LIMITS.maxDepth) {
+        // A finished object element: closing the remaining brackets yields
+        // the longest legal prefix (an unfinished trailing element drops).
+        push({ end: scanned + 1, closingSuffix: closeSuffix(stack) })
+      }
+      if (stack.length === 0) {
+        // Whole prefix balanced: a complete-JSON candidate (trailing comma /
+        // fence tail cases).
+        push({ end: scanned + 1, closingSuffix: '' })
+      }
       continue
     }
   }
-  return { stack, balancedEnds }
+  candidates.sort((a, b) => b.end - a.end)
+  const deduped: PartialCandidate[] = []
+  for (const c of candidates) {
+    if (deduped.length === 0 || deduped[deduped.length - 1]!.end !== c.end) deduped.push(c)
+  }
+  return { candidates: deduped.slice(0, repairAttemptsLimit), scannedChars: scanned }
+}
+
+/** Closing brackets for the remaining open stack (top first). */
+function closeSuffix(stack: string[]): string {
+  let suffix = ''
+  for (let i = stack.length - 1; i >= 0; i--) suffix += stack[i] === '{' ? '}' : ']'
+  return suffix
 }
 
 /** Try to parse a candidate as a GenuiSpec. */
@@ -82,31 +144,14 @@ export function parsePartialGenuiSpec(raw: string): GenuiSpec | null {
   const full = trySpec(text)
   if (full !== null) return full
 
-  // 2. Balanced prefixes, longest first (trailing comma / fence tail).
-  const scan = scanBrackets(text)
-  if (scan.stack !== null) {
-    for (const end of [...scan.balancedEnds].reverse()) {
-      const candidate = trySpec(text.slice(0, end))
-      if (candidate !== null) return candidate
-    }
-  }
-
-  // 3. Unfinished: drop the trailing incomplete element and close brackets.
-  //    Walk backward over every `}` (a completed element's end), truncate
-  //    there, and close whatever brackets remain open. Longest first.
-  for (let i = text.length - 1; i > 0; i--) {
-    if (text[i] !== '}') continue
-    const prefix = text.slice(0, i + 1)
-    const rescan = scanBrackets(prefix)
-    if (rescan.stack === null) continue
-    let candidate = prefix
-    for (const open of [...rescan.stack].reverse()) {
-      candidate += open === '{' ? '}' : ']'
-    }
-    const spec = trySpec(candidate)
+  // 2. Bounded repair: ONE forward scan, at most `repairAttemptsLimit`
+  //    candidates, longest first — never a re-scan per `}`.
+  const { candidates } = collectPartialCandidates(text)
+  for (const candidate of candidates) {
+    const spec = trySpec(text.slice(0, candidate.end) + candidate.closingSuffix)
     if (spec !== null) return spec
   }
 
-  // 4. Not even one complete element yet (e.g. `{"items":[{"type":"tex`).
+  // 3. Not even one complete element yet (e.g. `{"items":[{"type":"tex`).
   return null
 }

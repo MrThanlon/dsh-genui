@@ -79,14 +79,22 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
 
   /** Start a vertical resize drag on the panel's top edge. Dragging UP grows
    * the panel (the edge moves toward the message flow); dragging down shrinks
-   * it. */
+   * it. Pointer capture binds move/up/cancel to the HANDLE, so dragging past
+   * the element edge keeps tracking and nothing global is registered — no
+   * window listeners, nothing to leak on unmount. */
   const startResize = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault()
+    const handle = e.currentTarget
     // Track from the current committed height (state mirrors the drag, the
     // CSS default otherwise) — no DOM measurement needed.
     const startHeight = bodyHeight ?? 360
     dragStart.current = { y: e.clientY, height: startHeight }
     setResizing(true)
+    try {
+      handle.setPointerCapture(e.pointerId)
+    } catch {
+      // jsdom / capture unsupported: listeners below still track the drag.
+    }
     const onMove = (ev: PointerEvent): void => {
       const start = dragStart.current
       if (start === null) return
@@ -97,11 +105,13 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
     const onUp = (): void => {
       dragStart.current = null
       setResizing(false)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointermove', onMove)
+      handle.removeEventListener('pointerup', onUp)
+      handle.removeEventListener('pointercancel', onUp)
     }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointermove', onMove)
+    handle.addEventListener('pointerup', onUp)
+    handle.addEventListener('pointercancel', onUp)
   }, [bodyHeight])
 
   if (spec === null || spec.items.length === 0) return null
