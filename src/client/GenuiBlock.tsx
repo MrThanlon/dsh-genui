@@ -53,12 +53,6 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length]!
 }
 
-/** One recorded answer: the question's display label plus the chosen option. */
-interface AnswerEntry {
-  label: string
-  choice: string
-}
-
 /** Per-question metadata registered by grouped radios for local grading. */
 interface QuestionMeta {
   label: string
@@ -73,18 +67,23 @@ interface QuestionMeta {
  * and register their question metadata here; a sibling `submit` node either
  * grades IN PLACE (questions carry `answer` data) or collects everything
  * into ONE action. Lives in GenuiBlock state so re-renders keep the
- * selections, threaded down through the recursive render walk. */
+ * selections, threaded down through the recursive render walk. Answers are
+ * plain group → chosen-option-label strings (the display label lives in
+ * QuestionMeta; localStorage stores the same string table — no migration). */
 interface AnswersState {
-  answers: Record<string, AnswerEntry>
+  answers: Record<string, string>
   /** Field values by id (input/textarea with an `id`), collected by submit. */
   fields: Record<string, string>
+  /** Field ids whose value must never be persisted or collected (secrets). */
+  secretFields: ReadonlySet<string>
   meta: Record<string, QuestionMeta>
   /** True after a local grading: questions are locked until 重新作答. */
   locked: boolean
-  /** Bumped by every reset; radios use it to clear their local selection. */
+  /** Bumped by every reset; radios use it as their remount key. */
   round: number
-  setAnswer: (group: string, entry: AnswerEntry) => void
+  setAnswer: (group: string, choice: string) => void
   setField: (id: string, value: string) => void
+  registerSecretField: (id: string) => void
   registerMeta: (group: string, meta: QuestionMeta) => void
   clear: () => void
   setLocked: (locked: boolean) => void
@@ -120,7 +119,7 @@ function ClickFeedbackButton({ className, disabled, onClick, children }: {
       }}
     >
       {children}
-      {sent && <span className={css.btnSent}>✓ 已响应</span>}
+      {sent && <span className={css.btnSent}>✓ 已触发</span>}
     </button>
   )
 }
@@ -304,7 +303,7 @@ function renderNode(
       )
     }
     case 'chart': return <ChartNode key={key} chart={node} />
-    case 'tabs': return <TabsNode key={key} tabs={node} onAction={onAction} depth={depth + 1} />
+    case 'tabs': return <TabsNode key={key} tabs={node} onAction={onAction} depth={depth + 1} answers={answers} />
     case 'avatar': {
       return (
         <div key={key} className={css.avatar} style={{ background: node.color ?? avatarColor(node.name) }}>
@@ -320,7 +319,7 @@ function renderNode(
     case 'diff': return <DiffNode key={key} node={node} />
     case 'json': return <JsonNode key={key} node={node} />
     case 'code': return <CodeNode key={key} node={node} />
-    case 'radio': return <RadioNode key={key} node={node} onAction={onAction} answers={answers} />
+    case 'radio': return <RadioNode key={`${key}:r${answers?.round ?? 0}`} node={node} onAction={onAction} answers={answers} />
     case 'submit': return <SubmitNode key={key} node={node} onAction={onAction} answers={answers} />
     case 'switch': return <SwitchNode key={key} node={node} onAction={onAction} />
     case 'textarea': return <TextareaNode key={key} node={node} onAction={onAction} answers={answers} />
@@ -650,23 +649,15 @@ function RadioNode({ node, onAction, answers }: {
   // No default selection unless the model explicitly sets `selected` — a
   // pre-checked first option silently swallows the user's "keep the default"
   // answer (the registry only records real change events). A DURABLE answer
-  // (restored from localStorage) wins over both.
+  // (restored from localStorage) wins over both. The parent key includes the
+  // reset round, so 重新作答 remounts this radio with a clean selection —
+  // no sync effect needed.
   const restoredIndex = group !== undefined && answers?.answers[group] !== undefined
-    ? options.indexOf(answers!.answers[group]!.choice)
+    ? options.indexOf(answers!.answers[group]!)
     : -1
   const [selected, setSelected] = useState<number | null>(restoredIndex >= 0 ? restoredIndex : (node.selected ?? null))
   const uid = useId()
   const locked = grouped && answers?.locked === true
-  // A reset (重新作答) clears the local selection too — otherwise the radio
-  // keeps showing the previous round's choice and clicking it fires no
-  // change event, silently swallowing the re-answer. The initial mount is
-  // skipped: the restored/declared selection must survive (round is 0 there).
-  const mountedRound = useRef(answers?.round ?? 0)
-  useEffect(() => {
-    if (answers?.round === mountedRound.current) return
-    mountedRound.current = answers!.round
-    setSelected(node.selected ?? null)
-  }, [answers?.round])
   // Register question metadata for local grading (mount + when the question
   // changes). `answers` is deliberately NOT a dep: the callback identity is
   // stable and re-registering on every answers update is needless churn.
@@ -681,7 +672,7 @@ function RadioNode({ node, onAction, answers }: {
     // A model-provided default selection IS the answer — but only when the
     // group has no durable answer yet (a restored user choice must win).
     if (node.selected !== undefined && options[node.selected] !== undefined && answers?.answers[group] === undefined) {
-      answers?.setAnswer(group, { label: node.label ?? group, choice: options[node.selected]! })
+      answers?.setAnswer(group, options[node.selected]!)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group, node.label, node.answer, node.explanation, node.options, node.selected])
@@ -699,7 +690,7 @@ function RadioNode({ node, onAction, answers }: {
               setSelected(i)
               if (grouped) {
                 // Aggregation mode: record, do NOT round-trip per click.
-                answers?.setAnswer(group, { label: node.label ?? group, choice: opt })
+                answers?.setAnswer(group, opt)
               } else if (action !== undefined && onAction !== undefined) {
                 onAction(action, { type: 'radio', value: opt })
               }
@@ -736,11 +727,16 @@ function SubmitNode({ node, onAction, answers }: {
   const fields = answers?.fields ?? {}
   const meta = answers?.meta ?? {}
   const expected = node.groups
+  // One shared notion of "filled fields" for answered/ready/payload: non-blank
+  // values only, secrets (password inputs) never collected into submit.
+  const filledFields = Object.fromEntries(
+    Object.entries(fields).filter(([id, v]) => v.trim() !== '' && !answers?.secretFields.has(id)),
+  )
   // Without an explicit group list, the submit counts radio answers AND
   // filled fields — a fields-only form (inputs with id + submit) enables
   // once any field has a value.
   const answered = expected === undefined
-    ? Math.max(Object.keys(recorded).length, Object.keys(fields).length)
+    ? Math.max(Object.keys(recorded).length, Object.keys(filledFields).length)
     : expected.filter(g => recorded[g] !== undefined).length
   const total = expected?.length ?? answered
   const scope = expected ?? Object.keys(recorded)
@@ -752,7 +748,7 @@ function SubmitNode({ node, onAction, answers }: {
   if (submitted) {
     // ── local grading result ──
     const graded = scope.filter(g => recorded[g] !== undefined && meta[g]?.answer !== undefined)
-    const score = graded.filter(g => recorded[g]!.choice === correctLabelOf(meta[g]!)).length
+    const score = graded.filter(g => recorded[g] === correctLabelOf(meta[g]!)).length
     return (
       <div className={css.gradeWrap} data-genui-grade>
         <div className={css.gradeScore}>
@@ -769,17 +765,17 @@ function SubmitNode({ node, onAction, answers }: {
               return (
                 <div key={g} className={css.gradeItem}>
                   <span className={css.gradeQ}>{m.label}</span>
-                  <span className={css.gradeAns}>你的答案：{entry.choice}</span>
+                  <span className={css.gradeAns}>你的答案：{entry}</span>
                 </div>
               )
             }
-            const isCorrect = entry.choice === correct
+            const isCorrect = entry === correct
             return (
               <div key={g} className={`${css.gradeItem} ${isCorrect ? css.gradeItemOk : css.gradeItemNo}`}>
                 <span className={css.gradeQ}>{m.label}</span>
                 <span className={css.gradeTag}>{isCorrect ? '✓' : '✗'}</span>
                 <span className={css.gradeAns}>
-                  你的答案：{entry.choice}
+                  你的答案：{entry}
                   {!isCorrect && <span className={css.gradeRight}> 正确答案：{correct}</span>}
                 </span>
                 {m.explanation !== undefined && <span className={css.gradeExp}>{m.explanation}</span>}
@@ -814,11 +810,10 @@ function SubmitNode({ node, onAction, answers }: {
             // Local grading: immediate in-place result, no model round trip.
             answers?.setLocked(true)
           } else if (onAction !== undefined) {
-            const fields = answers?.fields ?? {}
             onAction(node.action, {
               type: 'submit',
-              answers: Object.fromEntries(Object.entries(recorded).map(([g, e]) => [g, e.choice])),
-              ...(Object.keys(fields).length > 0 ? { fields } : {}),
+              answers: recorded,
+              ...(Object.keys(filledFields).length > 0 ? { fields: filledFields } : {}),
               total,
               answered,
             })
@@ -856,10 +851,54 @@ function SwitchNode({ node, onAction }: { node: GenuiSwitch; onAction?: GenuiBlo
   )
 }
 
+/** Reuse the DSH main input's three-layer IME protection (verified in the
+ *  host InputBar): composition start arms a ref, composition end clears it
+ *  10ms later (Safari sends the closing keydown BEFORE compositionend), and
+ *  every submit keydown re-checks the ref, the native `isComposing` flag,
+ *  and `keyCode === 229`. A Chinese selection Enter must never submit. */
+function useImeComposing(): {
+  isComposing: () => boolean
+  onCompositionStart: () => void
+  onCompositionEnd: () => void
+} {
+  const composing = useRef(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) clearTimeout(timer.current)
+    }
+  }, [])
+  return {
+    isComposing: () => composing.current,
+    onCompositionStart: () => {
+      composing.current = true
+      if (timer.current !== null) {
+        clearTimeout(timer.current)
+        timer.current = null
+      }
+    },
+    onCompositionEnd: () => {
+      if (timer.current !== null) clearTimeout(timer.current)
+      timer.current = setTimeout(() => {
+        composing.current = false
+      }, 10)
+    },
+  }
+}
+
+function isImeSubmitKeydown(e: React.KeyboardEvent): boolean {
+  const native = e.nativeEvent
+  return native.isComposing === true || native.keyCode === 229
+}
+
 /** Input: single-line field. Controlled (value tracked for persistence and
- * submit collection when `id` is set). With `action`: Enter submits
- * immediately (`{type:'input', value, submit:true}`), blur sends too —
- * the user never has to click elsewhere for the value to reach the model. */
+ *  submit collection when `id` is set). With `action`: Enter submits
+ *  immediately (`{type:'input', value, submit:true}`), blur sends too —
+ *  the user never has to click elsewhere for the value to reach the model.
+ *  Enter during IME composition never submits. `inputType: 'password'`
+ *  stays masked; its value is never persisted and never joins submit
+ *  collection (secrets stay out of localStorage), while its own `action`
+ *  still delivers on explicit user submit. */
 function InputNode({ node, onAction, answers }: {
   node: GenuiInput
   onAction?: GenuiBlockProps['onAction']
@@ -867,14 +906,33 @@ function InputNode({ node, onAction, answers }: {
 }) {
   const action = node.action
   const id = node.id
+  const secret = node.inputType === 'password'
   // Initial value: spec default, else durable state (restored after refresh).
+  // Secrets restore as blank: a password that survives a refresh would be a
+  // stored secret, which is exactly what the boundary forbids.
   const [value, setValue] = useState<string>(() =>
-    node.value ?? (id !== undefined ? answers?.fields[id] ?? '' : ''))
+    secret ? '' : (node.value ?? (id !== undefined ? answers?.fields[id] ?? '' : '')))
   const send = (submit: boolean): void => {
     if (action !== undefined && onAction !== undefined) {
       onAction(action, { type: 'input', value, ...(submit ? { submit: true } : {}) })
     }
   }
+  const ime = useImeComposing()
+  // Field invariant: a spec-provided non-blank default registers at mount.
+  const mounted = useRef(false)
+  useEffect(() => {
+    if (mounted.current) return
+    mounted.current = true
+    if (!secret && id !== undefined && node.value !== undefined && node.value.trim() !== '') {
+      answers?.setField(id, node.value)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  // Secret fields are filtered from persistence and submit collection.
+  useEffect(() => {
+    if (secret && id !== undefined) answers?.registerSecretField(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [secret, id])
   return (
     <label className={css.field}>
       {node.label !== undefined && <span>{node.label}</span>}
@@ -889,11 +947,13 @@ function InputNode({ node, onAction, answers }: {
           if (id !== undefined) answers?.setField(id, v)
         }}
         onBlur={() => send(false)}
+        onCompositionStart={ime.onCompositionStart}
+        onCompositionEnd={ime.onCompositionEnd}
         onKeyDown={e => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            send(true)
-          }
+          if (e.key !== 'Enter') return
+          if (ime.isComposing() || isImeSubmitKeydown(e)) return
+          e.preventDefault()
+          send(true)
         }}
       />
     </label>
@@ -901,8 +961,9 @@ function InputNode({ node, onAction, answers }: {
 }
 
 /** Textarea: multi-line input; with `action`, blurring sends the value and
- * Ctrl/Cmd+Enter submits immediately. Controlled when `id` is set (durable
- * value + submit collection). */
+ *  Ctrl/Cmd+Enter submits immediately. Controlled when `id` is set (durable
+ *  value + submit collection). Ctrl/Cmd+Enter during IME composition never
+ *  submits. */
 function TextareaNode({ node, onAction, answers }: {
   node: GenuiTextarea
   onAction?: GenuiBlockProps['onAction']
@@ -917,6 +978,17 @@ function TextareaNode({ node, onAction, answers }: {
       onAction(action, { type: 'textarea', value, ...(submit ? { submit: true } : {}) })
     }
   }
+  const ime = useImeComposing()
+  // Field invariant: a spec-provided non-blank default registers at mount.
+  const mounted = useRef(false)
+  useEffect(() => {
+    if (mounted.current) return
+    mounted.current = true
+    if (id !== undefined && node.value !== undefined && node.value.trim() !== '') {
+      answers?.setField(id, node.value)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   return (
     <label className={css.field}>
       {node.label !== undefined && <span>{node.label}</span>}
@@ -931,11 +1003,13 @@ function TextareaNode({ node, onAction, answers }: {
           if (id !== undefined) answers?.setField(id, v)
         }}
         onBlur={() => send(false)}
+        onCompositionStart={ime.onCompositionStart}
+        onCompositionEnd={ime.onCompositionEnd}
         onKeyDown={e => {
-          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-            e.preventDefault()
-            send(true)
-          }
+          if (!(e.metaKey || e.ctrlKey) || e.key !== 'Enter') return
+          if (ime.isComposing() || isImeSubmitKeydown(e)) return
+          e.preventDefault()
+          send(true)
         }}
       />
     </label>
@@ -1225,23 +1299,32 @@ export const GenuiBlock = memo(function GenuiBlock({ spec, stateKey }: GenuiBloc
   // loaded once at mount (seed for re-renders of the same content) and saved
   // on every change.
   const [persisted] = useState(() => (stateKey === undefined ? null : loadBlockState(stateKey)))
-  const [answers, setAnswers] = useState<Record<string, AnswerEntry>>(() => {
-    const durable = persisted?.answers
-    if (durable === undefined) return {}
-    return Object.fromEntries(Object.entries(durable).map(([g, choice]) => [g, { label: g, choice }]))
-  })
+  const [answers, setAnswers] = useState<Record<string, string>>(persisted?.answers ?? {})
   const [fields, setFields] = useState<Record<string, string>>(persisted?.fields ?? {})
   const [meta, setMeta] = useState<Record<string, QuestionMeta>>({})
   const [locked, setLocked] = useState(persisted?.locked === true)
   const [round, setRound] = useState(0)
-  const setAnswer = useCallback((group: string, entry: AnswerEntry) => {
-    setAnswers(prev => {
-      const existing = prev[group]
-      return existing?.choice === entry.choice && existing.label === entry.label ? prev : { ...prev, [group]: entry }
-    })
+  // Secret (password) field ids: their values never persist and never join
+  // submit collection — the input itself stays masked and its own action
+  // still delivers the value on explicit user submit.
+  const [secretFields, setSecretFields] = useState<ReadonlySet<string>>(new Set())
+  const setAnswer = useCallback((group: string, choice: string) => {
+    setAnswers(prev => (prev[group] === choice ? prev : { ...prev, [group]: choice }))
   }, [])
   const setField = useCallback((id: string, value: string) => {
-    setFields(prev => (prev[id] === value ? prev : { ...prev, [id]: value }))
+    // Field invariant: a blank (trim-empty) value leaves the shared registry.
+    setFields(prev => {
+      if (value.trim() === '') {
+        if (!(id in prev)) return prev
+        const next = { ...prev }
+        delete next[id]
+        return next
+      }
+      return prev[id] === value ? prev : { ...prev, [id]: value }
+    })
+  }, [])
+  const registerSecretField = useCallback((id: string) => {
+    setSecretFields(prev => (prev.has(id) ? prev : new Set(prev).add(id)))
   }, [])
   const registerMeta = useCallback((group: string, m: QuestionMeta) => {
     setMeta(prev => {
@@ -1254,24 +1337,31 @@ export const GenuiBlock = memo(function GenuiBlock({ spec, stateKey }: GenuiBloc
   const clear = useCallback(() => {
     setAnswers({})
     setLocked(false)
-    setRound(r => r + 1) // radios reset their local selection too
+    setRound(r => r + 1) // radios remount (key carries the round) with clean selections
   }, [])
   const answersState = useMemo<AnswersState>(
-    () => ({ answers, fields, meta, locked, round, setAnswer, setField, registerMeta, clear, setLocked }),
-    [answers, fields, meta, locked, round, setAnswer, setField, registerMeta, clear],
+    () => ({
+      answers, fields, secretFields, meta, locked, round,
+      setAnswer, setField, registerSecretField, registerMeta, clear, setLocked,
+    }),
+    [answers, fields, secretFields, meta, locked, round, setAnswer, setField, registerSecretField, registerMeta, clear],
   )
   // Durable save (debounced 300ms — typing in a field fires per keystroke).
+  // Secret field values are stripped before writing: passwords never persist.
   useEffect(() => {
     if (stateKey === undefined) return
     const timer = setTimeout(() => {
+      const safeFields = Object.fromEntries(
+        Object.entries(fields).filter(([id]) => !secretFields.has(id)),
+      )
       saveBlockState(stateKey, {
-        answers: Object.fromEntries(Object.entries(answers).map(([g, e]) => [g, e.choice])),
+        answers,
         locked,
-        ...(Object.keys(fields).length > 0 ? { fields } : {}),
+        ...(Object.keys(safeFields).length > 0 ? { fields: safeFields } : {}),
       })
     }, 300)
     return () => clearTimeout(timer)
-  }, [stateKey, answers, locked, fields])
+  }, [stateKey, answers, locked, fields, secretFields])
   return (
     <div className={css.block} data-genui>
       {spec.title !== undefined && <div className={css.banner}>{spec.title}</div>}

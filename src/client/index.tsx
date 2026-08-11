@@ -297,9 +297,12 @@ function panelActionSend(ctx: Context, sessionId: SessionId): GenuiPanelInjected
       const payloadText = Object.keys(payload).length === 0
         ? ''
         : ` 组件数据: ${JSON.stringify(payload)}`
-      void conversation.send(`[genui-action] ${action}。用户刚刚在面板中触发了动作 "${action}"，请根据组件数据执行相应操作，只输出一个 panel:true 的 dsh-ui 围栏来更新面板，回复文本至多一行 10 字以内的确认（如"已刷新"），不要解释、不要普通围栏。${payloadText}`).catch(() => {
+      void conversation.send(`[genui-action] ${action}。用户刚刚在面板中触发了动作 "${action}"，请根据组件数据执行相应操作，只输出一个 panel:true 的 dsh-ui 围栏来更新面板，回复文本至多一行 10 字以内的确认（如"已刷新"），不要解释、不要普通围栏。${payloadText}`).catch((err: unknown) => {
         // A failed prompt (session gone, agent busy) drops the action; the
-        // panel stays interactive — the component is not disabled.
+        // panel stays interactive — the component is not disabled. Log the
+        // failure WITHOUT the action payload or any secret values (the
+        // message may contain field content).
+        console.warn(`[genui] 面板动作 "${action}" 发送失败（session ${sessionId}）：`, err instanceof Error ? err.message : String(err))
       })
     },
   }
@@ -312,9 +315,10 @@ function sendPanelInstruction(ctx: Context, sessionId: SessionId, instruction: s
   const scoped = ctx.sessions.scope(sessionId)
   const conversation = scoped?.get('conversation') as IConversation | undefined
   if (conversation === undefined) return
-  void conversation.send(`用户执行了 /panel 并请求：${instruction}。请只输出一个 panel:true 的 dsh-ui 围栏来更新会话面板，内容按请求定制；回复文本至多一行 10 字以内的确认（如"已更新"），不要解释、不要普通围栏。`).catch(() => {
-    // A failed prompt (session gone, agent busy) drops the instruction; the
-    // default panel stays visible.
+  void conversation.send(`用户执行了 /panel 并请求：${instruction}。请只输出一个 panel:true 的 dsh-ui 围栏来更新会话面板，内容按请求定制；回复文本至多一行 10 字以内的确认（如"已更新"），不要解释、不要普通围栏。`).catch((err: unknown) => {
+    // A failed prompt drops the instruction; the default panel stays
+    // visible. Log without the instruction text (may contain secrets).
+    console.warn(`[genui] /panel 指令发送失败（session ${sessionId}）：`, err instanceof Error ? err.message : String(err))
   })
 }
 

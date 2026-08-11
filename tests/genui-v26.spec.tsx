@@ -159,7 +159,7 @@ describe('v2.6: fallback keeps v2.5 behavior without answers', () => {
 })
 
 describe('v2.6: button local click feedback', () => {
-  it('shows 已响应 after clicking an actionable button, then clears', () => {
+  it('shows 已触发 after clicking an actionable button, then clears', () => {
     const { container } = render(
       <GenuiActionContext.Provider value={() => {}}>
         <MarkdownText text={fenced({ items: [
@@ -168,11 +168,11 @@ describe('v2.6: button local click feedback', () => {
       </GenuiActionContext.Provider>,
     )
     const button = container.querySelector('button')!
-    expect(button.textContent).not.toContain('已响应')
+    expect(button.textContent).not.toContain('已触发')
     fireEvent.click(button)
-    expect(button.textContent).toContain('已响应')
+    expect(button.textContent).toContain('已触发')
     act(() => { vi.advanceTimersByTime(1400) })
-    expect(button.textContent).not.toContain('已响应')
+    expect(button.textContent).not.toContain('已触发')
   })
 
   it('does not show feedback on inert (disabled) buttons', () => {
@@ -181,7 +181,7 @@ describe('v2.6: button local click feedback', () => {
     ] })} />)
     const button = container.querySelector('button')!
     fireEvent.click(button)
-    expect(button.textContent).not.toContain('已响应')
+    expect(button.textContent).not.toContain('已触发')
     expect(button.disabled).toBe(true)
   })
 })
