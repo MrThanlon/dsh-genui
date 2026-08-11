@@ -9,7 +9,7 @@
  * are operable, but events do NOT flow back to the model.
  */
 /** One node in the component tree. */
-export type GenuiNode = GenuiText | GenuiRow | GenuiCol | GenuiGrid | GenuiCard | GenuiButton | GenuiInput | GenuiSelect | GenuiCheckbox | GenuiLink | GenuiBadge | GenuiStat | GenuiProgress | GenuiDivider | GenuiList | GenuiTable | GenuiChart | GenuiTabs | GenuiAvatar | GenuiSpacer | GenuiPlot | GenuiCallout | GenuiSteps | GenuiKeyValue | GenuiDiff | GenuiJson | GenuiCode | GenuiRadio | GenuiSwitch | GenuiTextarea | GenuiAccordion | GenuiCopy | GenuiMermaid | GenuiScene3D | GenuiTimeline | GenuiFileTree | GenuiBreadcrumb | GenuiQuiz;
+export type GenuiNode = GenuiText | GenuiRow | GenuiCol | GenuiGrid | GenuiCard | GenuiButton | GenuiInput | GenuiSelect | GenuiCheckbox | GenuiLink | GenuiBadge | GenuiStat | GenuiProgress | GenuiDivider | GenuiList | GenuiTable | GenuiChart | GenuiTabs | GenuiAvatar | GenuiSpacer | GenuiPlot | GenuiCallout | GenuiSteps | GenuiKeyValue | GenuiDiff | GenuiJson | GenuiCode | GenuiRadio | GenuiSubmit | GenuiSwitch | GenuiTextarea | GenuiAccordion | GenuiCopy | GenuiMermaid | GenuiScene3D | GenuiTimeline | GenuiFileTree | GenuiBreadcrumb | GenuiQuiz;
 export interface GenuiSpec {
     /** Short title shown as the card banner. */
     title?: string;
@@ -54,6 +54,11 @@ export interface GenuiInput {
     inputType?: 'text' | 'email' | 'password';
     /** v2: when set, interaction sends this action back to the model. */
     action?: string;
+    /**
+     * v2.7: stable field id — the value is persisted across refresh/re-render
+     * and collected by a sibling `submit` node (`fields: {id: value}`).
+     */
+    id?: string;
 }
 export interface GenuiSelect {
     type: 'select';
@@ -246,6 +251,50 @@ export interface GenuiRadio {
     selected?: number;
     /** v2: when set, interaction sends this action back to the model. */
     action?: string;
+    /**
+     * v2.5: aggregation group name. When set, the selection is recorded into
+     * the block-wide answers registry instead of firing a per-click action — a
+     * sibling `submit` node then collects ALL groups ("交卷" pattern). Without
+     * `group`, the legacy per-click behavior applies.
+     */
+    group?: string;
+    /**
+     * v2.6: correct option for LOCAL grading — the option index (number) or
+     * its label (string). When the group's radio carries this, the `submit`
+     * button grades IN PLACE on click (score + per-question right/wrong +
+     * explanations, zero model round trip).
+     */
+    answer?: number | string;
+    /** v2.6: per-question explanation shown after local grading. */
+    explanation?: string;
+}
+/** Submit node: collects the answers of sibling `radio` groups in this block.
+ * LOCAL-FIRST: when the questions carry `answer` data the click grades IN
+ * PLACE — score, per-question right/wrong, explanations — with no model
+ * round trip, and locks the questions until "重新作答" resets them. Only when
+ * NO question carries answers does it fall back to firing ONE action
+ * (`{type:'submit', answers, total, answered}`). */
+export interface GenuiSubmit {
+    type: 'submit';
+    label: string;
+    /**
+     * Fallback action name (fired only when no question has local `answer`
+     * data, or as the reset hook if `resetAction` is absent — see below).
+     */
+    action: string;
+    /**
+     * v2.6: optional action fired when the user clicks "重新作答" after a
+     * local grading (e.g. to tell the model the paper was redone). Absent =
+     * reset stays fully local.
+     */
+    resetAction?: string;
+    /**
+     * Optional explicit group list to wait for; when absent the submit enables
+     * once at least one grouped radio has an answer. When present it stays
+     * disabled until EVERY listed group has a recorded answer (the hint shows
+     * the progress).
+     */
+    groups?: string[];
 }
 export interface GenuiSwitch {
     type: 'switch';
@@ -260,6 +309,13 @@ export interface GenuiTextarea {
     placeholder?: string;
     rows?: number;
     value?: string;
+    /** v2.5: when set, blurring the field sends this action with the value. */
+    action?: string;
+    /**
+     * v2.7: stable field id — the value is persisted across refresh/re-render
+     * and collected by a sibling `submit` node (`fields: {id: value}`).
+     */
+    id?: string;
 }
 export interface GenuiAccordionItem {
     title: string;
@@ -350,6 +406,10 @@ export interface GenuiQuiz {
     explanation?: string;
     /** Reset the quiz when this value changes (e.g. a question id). */
     id?: string;
+    /** v2.5: when set, answering sends this action with the chosen answer
+     * (`{type:'quiz', question, answer, correct}`) so the model can collect
+     * or grade it. */
+    action?: string;
 }
 /** Parse the raw fence body as a GenuiSpec, or null when it is not one. */
 export declare function parseGenuiSpec(raw: string): GenuiSpec | null;

@@ -16,6 +16,7 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/src/clie
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { repairGenuiSpec } from './guard.ts'
+import { toolStateKey } from './interaction-store.ts'
 import { publishPanelSpec } from './panel-store.ts'
 import css from './GenuiBlock.module.css'
 
@@ -51,7 +52,8 @@ export function GenuiToolView({ toolName, block, sessionId }: ToolCallViewProps)
   return (
     <div className={css.tool} data-genui-tool>
       <ErrorBoundary label="工具卡片">
-        <GenuiBlock spec={spec} />
+        {/* callId is stable across replay → tool-card interaction state is durable */}
+        <GenuiBlock spec={spec} stateKey={toolStateKey(sessionId, block.callId)} />
       </ErrorBoundary>
     </div>
   )

@@ -8,6 +8,12 @@ export interface GenuiBlockProps {
      * absent = components are display-only (v1 behavior).
      */
     onAction?: ((action: string, payload: Record<string, unknown>) => void) | undefined;
+    /**
+     * v2.7: durable-state key (session + slot + content fingerprint). When set,
+     * interaction state (radio answers, submit lock, field values) persists to
+     * localStorage and restores on refresh / re-render of the same content.
+     */
+    stateKey?: string | undefined;
 }
 /**
  * Trailing debounce window (ms) for one `[genui-action]` name: rapid

@@ -5,15 +5,16 @@
  * v1 interactivity is client-side only (buttons, tabs, checkboxes, and inputs
  * are operable; events do not flow back to the model).
  */
-import { memo, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { DiffBlock, JsonTree, CodeBlock } from '@deepseek-ai/dsh-client-ui-primitives'
 import { useGenuiAction, getGenuiComponent, type GenuiCustomNode } from '@deepseek-ai/dsh-client-ui-primitives'
 import { GENUI_LIMITS } from './guard.ts'
 import { PlotBlock } from './PlotBlock.tsx'
+import { loadBlockState, saveBlockState } from './interaction-store.ts'
 import type {
   GenuiAccordion, GenuiBreadcrumb, GenuiCallout, GenuiChart, GenuiCode, GenuiCopy, GenuiDiff, GenuiFileTree,
-  GenuiFileTreeNode, GenuiJson, GenuiKeyValue, GenuiMermaid, GenuiNode, GenuiPlot, GenuiRadio, GenuiScene3D, GenuiSpec,
-  GenuiQuiz, GenuiSteps, GenuiSwitch, GenuiTabs, GenuiTextarea, GenuiTimeline,
+  GenuiFileTreeNode, GenuiInput, GenuiJson, GenuiKeyValue, GenuiMermaid, GenuiNode, GenuiPlot, GenuiQuiz, GenuiRadio,
+  GenuiScene3D, GenuiSpec, GenuiSteps, GenuiSubmit, GenuiSwitch, GenuiTabs, GenuiTextarea, GenuiTimeline,
 } from './spec.ts'
 import css from './GenuiBlock.module.css'
 
@@ -26,6 +27,12 @@ export interface GenuiBlockProps {
    * absent = components are display-only (v1 behavior).
    */
   onAction?: ((action: string, payload: Record<string, unknown>) => void) | undefined
+  /**
+   * v2.7: durable-state key (session + slot + content fingerprint). When set,
+   * interaction state (radio answers, submit lock, field values) persists to
+   * localStorage and restores on refresh / re-render of the same content.
+   */
+  stateKey?: string | undefined
 }
 
 /** Deterministic avatar color by name hash. */
@@ -46,7 +53,85 @@ function avatarColor(name: string): string {
   return AVATAR_COLORS[h % AVATAR_COLORS.length]!
 }
 
-function renderNode(node: GenuiNode, key: number, onAction: GenuiBlockProps['onAction'] | undefined, depth = 0): ReactNode {
+/** One recorded answer: the question's display label plus the chosen option. */
+interface AnswerEntry {
+  label: string
+  choice: string
+}
+
+/** Per-question metadata registered by grouped radios for local grading. */
+interface QuestionMeta {
+  label: string
+  options: string[]
+  /** Correct option: index (number) or label (string); absent = no local grading. */
+  answer?: number | string | undefined
+  /** Shown after local grading. */
+  explanation?: string | undefined
+}
+
+/** Block-wide answers registry (v2.5/v2.6): grouped radios record selections
+ * and register their question metadata here; a sibling `submit` node either
+ * grades IN PLACE (questions carry `answer` data) or collects everything
+ * into ONE action. Lives in GenuiBlock state so re-renders keep the
+ * selections, threaded down through the recursive render walk. */
+interface AnswersState {
+  answers: Record<string, AnswerEntry>
+  /** Field values by id (input/textarea with an `id`), collected by submit. */
+  fields: Record<string, string>
+  meta: Record<string, QuestionMeta>
+  /** True after a local grading: questions are locked until 重新作答. */
+  locked: boolean
+  /** Bumped by every reset; radios use it to clear their local selection. */
+  round: number
+  setAnswer: (group: string, entry: AnswerEntry) => void
+  setField: (id: string, value: string) => void
+  registerMeta: (group: string, meta: QuestionMeta) => void
+  clear: () => void
+  setLocked: (locked: boolean) => void
+}
+
+/** Button with LOCAL click feedback: clicking an actionable button shows a
+ * brief "✓ 已响应" chip so the user sees the click registered even while the
+ * model round trip is in flight — no more "点了没反应" perception. The chip
+ * is purely cosmetic; the action fires through `onClick` as before. */
+function ClickFeedbackButton({ className, disabled, onClick, children }: {
+  className: string
+  disabled?: boolean
+  onClick?: (() => void) | undefined
+  children: ReactNode
+}) {
+  const [sent, setSent] = useState(false)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (timer.current !== null) clearTimeout(timer.current)
+    }
+  }, [])
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={disabled}
+      onClick={onClick === undefined ? undefined : () => {
+        onClick()
+        if (timer.current !== null) clearTimeout(timer.current)
+        setSent(true)
+        timer.current = setTimeout(() => setSent(false), 1400)
+      }}
+    >
+      {children}
+      {sent && <span className={css.btnSent}>✓ 已响应</span>}
+    </button>
+  )
+}
+
+function renderNode(
+  node: GenuiNode,
+  key: number,
+  onAction: GenuiBlockProps['onAction'] | undefined,
+  depth = 0,
+  answers?: AnswersState,
+): ReactNode {
   // Depth guard: a pathological spec must never recurse past the limit
   // (stack overflow / DOM explosion). The fence path already repairs specs
   // against the same limit; this is the belt-and-suspenders for direct
@@ -64,7 +149,7 @@ function renderNode(node: GenuiNode, key: number, onAction: GenuiBlockProps['onA
     case 'row': {
       return (
         <div key={key} className={css.row + (node.wrap ? ` ${css.wrap}` : '')}>
-          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
+          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1, answers))}
           {node.spacer && <div className={css.spacer} />}
         </div>
       )
@@ -72,14 +157,14 @@ function renderNode(node: GenuiNode, key: number, onAction: GenuiBlockProps['onA
     case 'col': {
       return (
         <div key={key} className={css.col} style={node.gap !== undefined ? { gap: `${node.gap}px` } : undefined}>
-          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
+          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1, answers))}
         </div>
       )
     }
     case 'grid': {
       return (
         <div key={key} className={css.grid} style={{ gridTemplateColumns: `repeat(${Math.max(1, node.cols)}, 1fr)` }}>
-          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
+          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1, answers))}
         </div>
       )
     }
@@ -87,7 +172,7 @@ function renderNode(node: GenuiNode, key: number, onAction: GenuiBlockProps['onA
       return (
         <div key={key} className={css.card}>
           {node.title !== undefined && <div className={css.cardTitle}>{node.title}</div>}
-          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
+          {node.items.map((c, i) => renderNode(c, i, onAction, depth + 1, answers))}
         </div>
       )
     }
@@ -95,37 +180,23 @@ function renderNode(node: GenuiNode, key: number, onAction: GenuiBlockProps['onA
       const tone = node.tone ?? ''
       const cls = `${css.button} ${css[tone] || ''}` + (node.full ? ` ${css.full}` : '') + (node.small ? ` ${css.small}` : '')
       const action = node.action
+      // A button without an action (or without an action provider) is a
+      // display-only control: render it DISABLED so the affordance is honest
+      // — clickable-looking dead buttons were the top complaint in the field.
+      const interactive = action !== undefined && onAction !== undefined
       return (
-        <button
+        <ClickFeedbackButton
           key={key}
-          type="button"
           className={cls}
-          onClick={action !== undefined && onAction !== undefined
-            ? () => onAction(action, { type: 'button', label: node.label })
-            : undefined}
+          disabled={!interactive}
+          onClick={interactive ? () => onAction(action, { type: 'button', label: node.label }) : undefined}
         >
           {node.icon !== undefined && <span aria-hidden>{node.icon} </span>}
           {node.label}
-        </button>
+        </ClickFeedbackButton>
       )
     }
-    case 'input': {
-      const action = node.action
-      return (
-        <label key={key} className={css.field}>
-          {node.label !== undefined && <span>{node.label}</span>}
-          <input
-            className={css.input}
-            type={node.inputType ?? 'text'}
-            placeholder={node.placeholder}
-            defaultValue={node.value}
-            onBlur={action !== undefined && onAction !== undefined
-              ? e => onAction(action, { type: 'input', value: e.currentTarget.value })
-              : undefined}
-          />
-        </label>
-      )
-    }
+    case 'input': return <InputNode key={key} node={node} onAction={onAction} answers={answers} />
     case 'select': {
       const action = node.action
       return (
@@ -249,17 +320,18 @@ function renderNode(node: GenuiNode, key: number, onAction: GenuiBlockProps['onA
     case 'diff': return <DiffNode key={key} node={node} />
     case 'json': return <JsonNode key={key} node={node} />
     case 'code': return <CodeNode key={key} node={node} />
-    case 'radio': return <RadioNode key={key} node={node} onAction={onAction} />
+    case 'radio': return <RadioNode key={key} node={node} onAction={onAction} answers={answers} />
+    case 'submit': return <SubmitNode key={key} node={node} onAction={onAction} answers={answers} />
     case 'switch': return <SwitchNode key={key} node={node} onAction={onAction} />
-    case 'textarea': return <TextareaNode key={key} node={node} />
-    case 'accordion': return <AccordionNode key={key} node={node} onAction={onAction} depth={depth + 1} />
+    case 'textarea': return <TextareaNode key={key} node={node} onAction={onAction} answers={answers} />
+    case 'accordion': return <AccordionNode key={key} node={node} onAction={onAction} depth={depth + 1} answers={answers} />
     case 'copy': return <CopyNode key={key} node={node} />
     case 'mermaid': return <MermaidNode key={key} node={node} />
     case 'scene3d': return <Scene3DNode key={key} node={node} />
     case 'timeline': return <TimelineNode key={key} node={node} />
     case 'file-tree': return <FileTreeNode key={key} node={node} />
     case 'breadcrumb': return <BreadcrumbNode key={key} node={node} />
-    case 'quiz': return <QuizNode key={key} node={node} />
+    case 'quiz': return <QuizNode key={key} node={node} onAction={onAction} />
     default: {
       // Plugin-registered custom types: a plugin ships a renderer through
       // registerGenuiComponent; unregistered unknowns render nothing. The
@@ -273,7 +345,7 @@ function renderNode(node: GenuiNode, key: number, onAction: GenuiBlockProps['onA
             key={key}
             node={custom}
             onAction={onAction}
-            renderChildren={(nodes, base) => nodes.map((c, i) => renderNode(c as GenuiNode, Number(base) + i, onAction, depth + 1))}
+            renderChildren={(nodes, base) => nodes.map((c, i) => renderNode(c as GenuiNode, Number(base) + i, onAction, depth + 1, answers))}
           />
         )
       }
@@ -504,7 +576,12 @@ function DonutNode({ chart }: { chart: GenuiChart }) {
 /** Tab strip with local active-tab state. Keyboard: ArrowLeft/Right to move,
  * Home/End to jump; ids wired via useId so `aria-controls` stays unique
  * across fences and sessions. */
-function TabsNode({ tabs, onAction, depth = 0 }: { tabs: GenuiTabs; onAction?: GenuiBlockProps['onAction']; depth?: number }) {
+function TabsNode({ tabs, onAction, depth = 0, answers }: {
+  tabs: GenuiTabs
+  onAction?: GenuiBlockProps['onAction']
+  depth?: number
+  answers?: AnswersState | undefined
+}) {
   const [active, setActive] = useState(0)
   const uid = useId()
   const list = tabs.tabs.slice(0, GENUI_LIMITS.maxTabs)
@@ -545,7 +622,7 @@ function TabsNode({ tabs, onAction, depth = 0 }: { tabs: GenuiTabs; onAction?: G
       </div>
       {current !== undefined && (
         <div className={css.col} role="tabpanel" id={`${uid}-panel-${active}`} aria-labelledby={`${uid}-tab-${active}`}>
-          {current.items.map((c, i) => renderNode(c, i, onAction, depth + 1))}
+          {current.items.map((c, i) => renderNode(c, i, onAction, depth + 1, answers))}
         </div>
       )}
     </div>
@@ -553,12 +630,61 @@ function TabsNode({ tabs, onAction, depth = 0 }: { tabs: GenuiTabs; onAction?: G
 }
 
 /** Radio: one option from a group; local selection state. The group name is
- * useId-based so sibling groups never collide (deterministic per mount). */
-function RadioNode({ node, onAction }: { node: GenuiRadio; onAction?: GenuiBlockProps['onAction'] }) {
-  const [selected, setSelected] = useState(node.selected ?? 0)
-  const uid = useId()
+ * useId-based so sibling groups never collide (deterministic per mount).
+ *
+ * v2.5 aggregation: when `group` is set, the selection is recorded into the
+ * block-wide answers registry instead of firing a per-click action — a
+ * sibling `submit` node then grades the paper IN PLACE (v2.6, questions
+ * carry `answer` data) or collects all groups in ONE action. Without
+ * `group`, the legacy per-click action fires. After a local grading the
+ * group locks until 重新作答 resets it. */
+function RadioNode({ node, onAction, answers }: {
+  node: GenuiRadio
+  onAction?: GenuiBlockProps['onAction']
+  answers?: AnswersState | undefined
+}) {
   const action = node.action
+  const group = node.group
+  const grouped = group !== undefined
   const options = node.options.slice(0, GENUI_LIMITS.maxOptions)
+  // No default selection unless the model explicitly sets `selected` — a
+  // pre-checked first option silently swallows the user's "keep the default"
+  // answer (the registry only records real change events). A DURABLE answer
+  // (restored from localStorage) wins over both.
+  const restoredIndex = group !== undefined && answers?.answers[group] !== undefined
+    ? options.indexOf(answers!.answers[group]!.choice)
+    : -1
+  const [selected, setSelected] = useState<number | null>(restoredIndex >= 0 ? restoredIndex : (node.selected ?? null))
+  const uid = useId()
+  const locked = grouped && answers?.locked === true
+  // A reset (重新作答) clears the local selection too — otherwise the radio
+  // keeps showing the previous round's choice and clicking it fires no
+  // change event, silently swallowing the re-answer. The initial mount is
+  // skipped: the restored/declared selection must survive (round is 0 there).
+  const mountedRound = useRef(answers?.round ?? 0)
+  useEffect(() => {
+    if (answers?.round === mountedRound.current) return
+    mountedRound.current = answers!.round
+    setSelected(node.selected ?? null)
+  }, [answers?.round])
+  // Register question metadata for local grading (mount + when the question
+  // changes). `answers` is deliberately NOT a dep: the callback identity is
+  // stable and re-registering on every answers update is needless churn.
+  useEffect(() => {
+    if (group === undefined) return
+    answers?.registerMeta(group, {
+      label: node.label ?? group,
+      options,
+      answer: node.answer,
+      explanation: node.explanation,
+    })
+    // A model-provided default selection IS the answer — but only when the
+    // group has no durable answer yet (a restored user choice must win).
+    if (node.selected !== undefined && options[node.selected] !== undefined && answers?.answers[group] === undefined) {
+      answers?.setAnswer(group, { label: node.label ?? group, choice: options[node.selected]! })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [group, node.label, node.answer, node.explanation, node.options, node.selected])
   return (
     <div className={css.fieldGroup} role="radiogroup" aria-label={node.label}>
       {node.label !== undefined && <span className={css.fieldLabel}>{node.label}</span>}
@@ -567,15 +693,141 @@ function RadioNode({ node, onAction }: { node: GenuiRadio; onAction?: GenuiBlock
           <input
             type="radio"
             name={`genui-radio-${uid}`}
-            checked={i === selected}
+            checked={selected === i}
+            disabled={locked}
             onChange={() => {
               setSelected(i)
-              if (action !== undefined && onAction !== undefined) onAction(action, { type: 'radio', value: opt })
+              if (grouped) {
+                // Aggregation mode: record, do NOT round-trip per click.
+                answers?.setAnswer(group, { label: node.label ?? group, choice: opt })
+              } else if (action !== undefined && onAction !== undefined) {
+                onAction(action, { type: 'radio', value: opt })
+              }
             }}
           />
           <span>{opt}</span>
         </label>
       ))}
+    </div>
+  )
+}
+
+/** Resolve a question's correct label from its metadata. */
+function correctLabelOf(m: QuestionMeta): string | undefined {
+  if (m.answer === undefined) return undefined
+  if (typeof m.answer === 'number') return m.options[m.answer]
+  return m.answer
+}
+
+/** Submit: the "交卷" control of a grouped-radio block. LOCAL-FIRST (v2.6):
+ * when at least one question carries `answer` data the click grades IN PLACE
+ * — score, per-question right/wrong, explanations — with zero model round
+ * trip, and locks the questions until 重新作答 resets them. Only when NO
+ * question has answers does it fall back to firing ONE action
+ * (`{type:'submit', answers, total, answered}`). Disabled until the
+ * selection criteria are met (all listed groups answered, or ≥1 answer
+ * without a group list); the hint shows the progress. */
+function SubmitNode({ node, onAction, answers }: {
+  node: GenuiSubmit
+  onAction?: GenuiBlockProps['onAction']
+  answers?: AnswersState | undefined
+}) {
+  const recorded = answers?.answers ?? {}
+  const fields = answers?.fields ?? {}
+  const meta = answers?.meta ?? {}
+  const expected = node.groups
+  // Without an explicit group list, the submit counts radio answers AND
+  // filled fields — a fields-only form (inputs with id + submit) enables
+  // once any field has a value.
+  const answered = expected === undefined
+    ? Math.max(Object.keys(recorded).length, Object.keys(fields).length)
+    : expected.filter(g => recorded[g] !== undefined).length
+  const total = expected?.length ?? answered
+  const scope = expected ?? Object.keys(recorded)
+  // Local grading is possible when ANY in-scope question carries answers.
+  const canGradeLocally = scope.some(g => meta[g]?.answer !== undefined)
+  const submitted = answers?.locked === true
+  const ready = answered > 0 && answered >= total && (canGradeLocally || onAction !== undefined)
+
+  if (submitted) {
+    // ── local grading result ──
+    const graded = scope.filter(g => recorded[g] !== undefined && meta[g]?.answer !== undefined)
+    const score = graded.filter(g => recorded[g]!.choice === correctLabelOf(meta[g]!)).length
+    return (
+      <div className={css.gradeWrap} data-genui-grade>
+        <div className={css.gradeScore}>
+          <span className={css.gradeScoreValue}>{score} / {graded.length}</span>
+          <span className={css.gradeScoreLabel}>得分{graded.length < scope.length ? `（${scope.length - graded.length} 题无答案未计分）` : ''}</span>
+        </div>
+        <div className={css.gradeList}>
+          {scope.map(g => {
+            const entry = recorded[g]
+            const m = meta[g]
+            if (entry === undefined || m === undefined) return null
+            const correct = correctLabelOf(m)
+            if (correct === undefined) {
+              return (
+                <div key={g} className={css.gradeItem}>
+                  <span className={css.gradeQ}>{m.label}</span>
+                  <span className={css.gradeAns}>你的答案：{entry.choice}</span>
+                </div>
+              )
+            }
+            const isCorrect = entry.choice === correct
+            return (
+              <div key={g} className={`${css.gradeItem} ${isCorrect ? css.gradeItemOk : css.gradeItemNo}`}>
+                <span className={css.gradeQ}>{m.label}</span>
+                <span className={css.gradeTag}>{isCorrect ? '✓' : '✗'}</span>
+                <span className={css.gradeAns}>
+                  你的答案：{entry.choice}
+                  {!isCorrect && <span className={css.gradeRight}> 正确答案：{correct}</span>}
+                </span>
+                {m.explanation !== undefined && <span className={css.gradeExp}>{m.explanation}</span>}
+              </div>
+            )
+          })}
+        </div>
+        <button
+          type="button"
+          className={`${css.button} ${css.ghost} ${css.submit}`}
+          onClick={() => {
+            answers?.clear()
+            if (node.resetAction !== undefined && onAction !== undefined) {
+              onAction(node.resetAction, { type: 'submit-reset', groups: expected ?? Object.keys(recorded) })
+            }
+          }}
+        >
+          重新作答
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className={css.submitRow}>
+      <button
+        type="button"
+        className={`${css.button} ${css.primary} ${css.submit}`}
+        disabled={!ready}
+        onClick={ready ? () => {
+          if (canGradeLocally) {
+            // Local grading: immediate in-place result, no model round trip.
+            answers?.setLocked(true)
+          } else if (onAction !== undefined) {
+            const fields = answers?.fields ?? {}
+            onAction(node.action, {
+              type: 'submit',
+              answers: Object.fromEntries(Object.entries(recorded).map(([g, e]) => [g, e.choice])),
+              ...(Object.keys(fields).length > 0 ? { fields } : {}),
+              total,
+              answered,
+            })
+          }
+        } : undefined}
+      >
+        {node.label}
+      </button>
+      {total > 0 && <span className={css.submitHint} aria-live="polite">已选 {answered}/{total}</span>}
     </div>
   )
 }
@@ -604,8 +856,67 @@ function SwitchNode({ node, onAction }: { node: GenuiSwitch; onAction?: GenuiBlo
   )
 }
 
-/** Textarea: multi-line input. */
-function TextareaNode({ node }: { node: GenuiTextarea }) {
+/** Input: single-line field. Controlled (value tracked for persistence and
+ * submit collection when `id` is set). With `action`: Enter submits
+ * immediately (`{type:'input', value, submit:true}`), blur sends too —
+ * the user never has to click elsewhere for the value to reach the model. */
+function InputNode({ node, onAction, answers }: {
+  node: GenuiInput
+  onAction?: GenuiBlockProps['onAction']
+  answers?: AnswersState | undefined
+}) {
+  const action = node.action
+  const id = node.id
+  // Initial value: spec default, else durable state (restored after refresh).
+  const [value, setValue] = useState<string>(() =>
+    node.value ?? (id !== undefined ? answers?.fields[id] ?? '' : ''))
+  const send = (submit: boolean): void => {
+    if (action !== undefined && onAction !== undefined) {
+      onAction(action, { type: 'input', value, ...(submit ? { submit: true } : {}) })
+    }
+  }
+  return (
+    <label className={css.field}>
+      {node.label !== undefined && <span>{node.label}</span>}
+      <input
+        className={css.input}
+        type={node.inputType ?? 'text'}
+        placeholder={node.placeholder}
+        value={value}
+        onChange={e => {
+          const v = e.currentTarget.value
+          setValue(v)
+          if (id !== undefined) answers?.setField(id, v)
+        }}
+        onBlur={() => send(false)}
+        onKeyDown={e => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            send(true)
+          }
+        }}
+      />
+    </label>
+  )
+}
+
+/** Textarea: multi-line input; with `action`, blurring sends the value and
+ * Ctrl/Cmd+Enter submits immediately. Controlled when `id` is set (durable
+ * value + submit collection). */
+function TextareaNode({ node, onAction, answers }: {
+  node: GenuiTextarea
+  onAction?: GenuiBlockProps['onAction']
+  answers?: AnswersState | undefined
+}) {
+  const action = node.action
+  const id = node.id
+  const [value, setValue] = useState<string>(() =>
+    node.value ?? (id !== undefined ? answers?.fields[id] ?? '' : ''))
+  const send = (submit: boolean): void => {
+    if (action !== undefined && onAction !== undefined) {
+      onAction(action, { type: 'textarea', value, ...(submit ? { submit: true } : {}) })
+    }
+  }
   return (
     <label className={css.field}>
       {node.label !== undefined && <span>{node.label}</span>}
@@ -613,7 +924,19 @@ function TextareaNode({ node }: { node: GenuiTextarea }) {
         className={css.textarea}
         placeholder={node.placeholder}
         rows={node.rows ?? 4}
-        defaultValue={node.value}
+        value={value}
+        onChange={e => {
+          const v = e.currentTarget.value
+          setValue(v)
+          if (id !== undefined) answers?.setField(id, v)
+        }}
+        onBlur={() => send(false)}
+        onKeyDown={e => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+            e.preventDefault()
+            send(true)
+          }
+        }}
       />
     </label>
   )
@@ -621,7 +944,12 @@ function TextareaNode({ node }: { node: GenuiTextarea }) {
 
 /** Accordion: collapsible sections with local open state. Headings and
  * bodies are wired via useId (`aria-controls`/`aria-labelledby`). */
-function AccordionNode({ node, onAction, depth = 0 }: { node: GenuiAccordion; onAction?: GenuiBlockProps['onAction']; depth?: number }) {
+function AccordionNode({ node, onAction, depth = 0, answers }: {
+  node: GenuiAccordion
+  onAction?: GenuiBlockProps['onAction']
+  depth?: number
+  answers?: AnswersState | undefined
+}) {
   const [open, setOpen] = useState<number | null>(0)
   const uid = useId()
   const items = node.items.slice(0, GENUI_LIMITS.maxAccordionItems)
@@ -642,7 +970,7 @@ function AccordionNode({ node, onAction, depth = 0 }: { node: GenuiAccordion; on
           </button>
           {open === i && (
             <div className={css.accBody} id={`${uid}-body-${i}`} aria-labelledby={`${uid}-head-${i}`}>
-              {item.items.map((c, ci) => renderNode(c, ci, onAction, depth + 1))}
+              {item.items.map((c, ci) => renderNode(c, ci, onAction, depth + 1, answers))}
             </div>
           )}
         </div>
@@ -763,14 +1091,20 @@ function FileTreeNode({ node }: { node: GenuiFileTree }) {
 }
 
 /** Quiz: a self-contained teaching question. Selecting an option marks it
- * correct/incorrect in place and reveals feedback + explanation — pure
- * frontend, no model round-trip (fits the v1 interaction contract). */
-function QuizNode({ node }: { node: GenuiQuiz }) {
+ * correct/incorrect in place and reveals feedback + explanation. With
+ * `action`, the chosen answer is ALSO sent back to the model
+ * (`{type:'quiz', question, answer, correct}`) so the model can collect or
+ * grade it — the in-place judging stays local (no round trip needed). */
+function QuizNode({ node, onAction }: {
+  node: GenuiQuiz
+  onAction?: GenuiBlockProps['onAction']
+}) {
   const [selected, setSelected] = useState<number | null>(null)
   const options = node.options.slice(0, GENUI_LIMITS.maxQuizOptions)
   const answered = selected !== null
   const chosen = selected === null ? undefined : options[selected]
   const correct = chosen?.correct === true
+  const action = node.action
   return (
     <div className={css.quiz} data-genui-quiz>
       <div className={css.quizQuestion}>{node.question}</div>
@@ -788,7 +1122,17 @@ function QuizNode({ node }: { node: GenuiQuiz }) {
               type="button"
               className={cls}
               disabled={answered}
-              onClick={() => setSelected(i)}
+              onClick={() => {
+                setSelected(i)
+                if (action !== undefined && onAction !== undefined) {
+                  onAction(action, {
+                    type: 'quiz',
+                    question: node.question,
+                    answer: opt.label,
+                    correct: opt.correct === true,
+                  })
+                }
+              }}
             >
               <span className={css.quizMarker}>{answered && (opt.correct === true ? '✓' : isChosen ? '✗' : '')}</span>
               {opt.label}
@@ -870,9 +1214,64 @@ function useDebouncedAction(onAction: GenuiBlockProps['onAction'] | undefined): 
  * Render a GenUI spec as an inline block. Falls back to nothing when the spec
  * carries no items (the fence renderer already refused non-specs before us).
  */
-export const GenuiBlock = memo(function GenuiBlock({ spec }: GenuiBlockProps) {
+export const GenuiBlock = memo(function GenuiBlock({ spec, stateKey }: GenuiBlockProps) {
   const gap = spec.gap ?? 14
   const onAction = useDebouncedAction(useGenuiAction())
+  // v2.5/v2.6 answers registry: grouped radios record selections + question
+  // metadata here; `submit` nodes grade locally (locked until 重新作答) or
+  // collect into one action. Block-local state survives re-renders (streaming
+  // settle, panel updates) — selections persist while the block is mounted.
+  // v2.7 durability: with a stateKey the state ALSO survives refresh/reopen —
+  // loaded once at mount (seed for re-renders of the same content) and saved
+  // on every change.
+  const [persisted] = useState(() => (stateKey === undefined ? null : loadBlockState(stateKey)))
+  const [answers, setAnswers] = useState<Record<string, AnswerEntry>>(() => {
+    const durable = persisted?.answers
+    if (durable === undefined) return {}
+    return Object.fromEntries(Object.entries(durable).map(([g, choice]) => [g, { label: g, choice }]))
+  })
+  const [fields, setFields] = useState<Record<string, string>>(persisted?.fields ?? {})
+  const [meta, setMeta] = useState<Record<string, QuestionMeta>>({})
+  const [locked, setLocked] = useState(persisted?.locked === true)
+  const [round, setRound] = useState(0)
+  const setAnswer = useCallback((group: string, entry: AnswerEntry) => {
+    setAnswers(prev => {
+      const existing = prev[group]
+      return existing?.choice === entry.choice && existing.label === entry.label ? prev : { ...prev, [group]: entry }
+    })
+  }, [])
+  const setField = useCallback((id: string, value: string) => {
+    setFields(prev => (prev[id] === value ? prev : { ...prev, [id]: value }))
+  }, [])
+  const registerMeta = useCallback((group: string, m: QuestionMeta) => {
+    setMeta(prev => {
+      const existing = prev[group]
+      if (existing !== undefined && existing.label === m.label && existing.answer === m.answer
+        && existing.explanation === m.explanation) return prev
+      return { ...prev, [group]: m }
+    })
+  }, [])
+  const clear = useCallback(() => {
+    setAnswers({})
+    setLocked(false)
+    setRound(r => r + 1) // radios reset their local selection too
+  }, [])
+  const answersState = useMemo<AnswersState>(
+    () => ({ answers, fields, meta, locked, round, setAnswer, setField, registerMeta, clear, setLocked }),
+    [answers, fields, meta, locked, round, setAnswer, setField, registerMeta, clear],
+  )
+  // Durable save (debounced 300ms — typing in a field fires per keystroke).
+  useEffect(() => {
+    if (stateKey === undefined) return
+    const timer = setTimeout(() => {
+      saveBlockState(stateKey, {
+        answers: Object.fromEntries(Object.entries(answers).map(([g, e]) => [g, e.choice])),
+        locked,
+        ...(Object.keys(fields).length > 0 ? { fields } : {}),
+      })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [stateKey, answers, locked, fields])
   return (
     <div className={css.block} data-genui>
       {spec.title !== undefined && <div className={css.banner}>{spec.title}</div>}
@@ -887,7 +1286,7 @@ export const GenuiBlock = memo(function GenuiBlock({ spec }: GenuiBlockProps) {
             className={css.reveal}
             style={{ animationDelay: `${Math.min(i * 90, 720)}ms` }}
           >
-            {renderNode(c, i, onAction, 0)}
+            {renderNode(c, i, onAction, 0, answersState)}
           </div>
         ))}
       </div>

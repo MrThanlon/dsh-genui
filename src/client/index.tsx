@@ -25,6 +25,7 @@ import { getActiveSessionId, setActiveSessionId } from './active-session.ts'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { repairGenuiSpec } from './guard.ts'
+import { fenceStateKey } from './interaction-store.ts'
 import { parsePartialGenuiSpec } from './parse-partial.ts'
 import { createPanelSlashSource } from './panel-command.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
@@ -76,9 +77,16 @@ export const renderGenuiFence: FenceRenderer = (raw, key) => {
     }
     return null
   }
+  const sessionId = getActiveSessionId()
   return (
     <ErrorBoundary label="该界面">
-      <GenuiBlock key={key} spec={spec} />
+      <GenuiBlock
+        key={key}
+        spec={spec}
+        // v2.7 durable state: session + fence slot + content fingerprint —
+        // replaying the same content restores answers/lock/field values.
+        stateKey={sessionId === null ? undefined : fenceStateKey(sessionId, String(key), JSON.stringify(spec))}
+      />
     </ErrorBoundary>
   )
 }

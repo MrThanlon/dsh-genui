@@ -185,6 +185,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
         ...opt('value', str(v.value, GENUI_LIMITS.maxString)),
         ...opt('inputType', enu(v.inputType, INPUT_TYPES)),
         ...opt('action', str(v.action, 200)),
+        ...opt('id', str(v.id, 200)),
       }
     }
     case 'select': {
@@ -300,6 +301,25 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
         ...opt('label', str(v.label, GENUI_LIMITS.maxString)),
         ...opt('selected', int(v.selected, 0, options.length - 1)),
         ...opt('action', str(v.action, 200)),
+        ...opt('group', str(v.group, 200)),
+        // answer: option index (number) or label (string); out-of-range
+        // indices are DROPPED (clamping would silently grade against the
+        // wrong option)
+        ...opt('answer', typeof v.answer === 'number' && Number.isFinite(v.answer)
+          && v.answer >= 0 && v.answer < options.length
+          ? Math.trunc(v.answer)
+          : typeof v.answer === 'string' ? v.answer.slice(0, 512) : undefined),
+        ...opt('explanation', str(v.explanation, GENUI_LIMITS.maxString)),
+      }
+    }
+    case 'submit': {
+      const label = str(v.label, GENUI_LIMITS.maxString)
+      const action = str(v.action, 200)
+      if (label === undefined || action === undefined) return null
+      return {
+        type: 'submit', label, action,
+        ...opt('resetAction', str(v.resetAction, 200)),
+        ...opt('groups', repairStrings(v.groups, GENUI_LIMITS.maxOptions, 200)),
       }
     }
     case 'switch': {
@@ -314,6 +334,8 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
         ...opt('placeholder', str(v.placeholder, GENUI_LIMITS.maxString)),
         ...opt('rows', int(v.rows, 1, 30)),
         ...opt('value', str(v.value, GENUI_LIMITS.maxString)),
+        ...opt('action', str(v.action, 200)),
+        ...opt('id', str(v.id, 200)),
       }
     }
     case 'accordion': {
@@ -355,7 +377,12 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       const question = str(v.question, GENUI_LIMITS.maxString)
       const options = repairQuizOptions(v.options)
       if (question === undefined || options === undefined) return null
-      return { type: 'quiz', question, options, ...opt('explanation', str(v.explanation, GENUI_LIMITS.maxString)), ...opt('id', str(v.id, 200)) }
+      return {
+        type: 'quiz', question, options,
+        ...opt('explanation', str(v.explanation, GENUI_LIMITS.maxString)),
+        ...opt('id', str(v.id, 200)),
+        ...opt('action', str(v.action, 200)),
+      }
     }
     default:
       // Plugin-registered custom node types are opaque to the guard: pass
@@ -719,6 +746,10 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       break
     case 'select': case 'radio':
       if (!Array.isArray(v.options)) errors.push(`${at}: type '${type}' requires options (array)`)
+      break
+    case 'submit':
+      if (typeof v.label !== 'string') errors.push(`${at}: type 'submit' requires label (string)`)
+      if (typeof v.action !== 'string') errors.push(`${at}: type 'submit' requires action (string)`)
       break
     case 'badge':
       if (typeof v.label !== 'string') errors.push(`${at}: type 'badge' requires label (string)`)

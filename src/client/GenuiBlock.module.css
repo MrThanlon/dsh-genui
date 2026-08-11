@@ -69,8 +69,17 @@
   text-align: center;
 }
 
-.button:hover { border-color: var(--dsw-alias-state-business-primary, #4f8ef7); filter: brightness(1.06); }
-.button.primary:hover { filter: brightness(1.08); }
+.button:hover:not(:disabled) { border-color: var(--dsw-alias-state-business-primary, #4f8ef7); filter: brightness(1.06); }
+.button.primary:hover:not(:disabled) { filter: brightness(1.08); }
+/* Display-only buttons (no action): honest disabled affordance — the
+ * clickable-looking dead button was the top interaction complaint. */
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  filter: none;
+  box-shadow: none;
+  pointer-events: none;
+}
 .button.primary {
   background: var(--dsw-alias-state-business-primary, #4f8ef7);
   border: none;
@@ -353,6 +362,46 @@
 .fieldLabel { font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
 .radio { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--dsw-alias-label-secondary); cursor: pointer; }
 .radio input { accent-color: var(--dsw-alias-state-business-primary, #4f8ef7); }
+
+/* ---------- submit（交卷聚合 / 本地判卷） ---------- */
+
+.submitRow { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+.submit { align-self: flex-start; }
+.submitHint { font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
+
+.btnSent {
+  margin-left: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--dsw-alias-state-success-primary, #3ecf8e);
+}
+
+/* local grading result panel */
+.gradeWrap { display: flex; flex-direction: column; gap: 10px; }
+.gradeScore { display: flex; align-items: baseline; gap: 8px; }
+.gradeScoreValue { font-size: 22px; font-weight: 700; color: var(--dsw-alias-label-primary); }
+.gradeScoreLabel { font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
+.gradeList { display: flex; flex-direction: column; gap: 7px; }
+.gradeItem {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  gap: 6px 10px;
+  align-items: baseline;
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--dsw-alias-border-l1, var(--dsw-alias-border-l2, rgba(255,255,255,0.12)));
+  background: var(--dsw-alias-bg-layer-1);
+}
+.gradeItemOk { border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary, #3ecf8e) 35%, transparent); }
+.gradeItemNo { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary, #ff6b6b) 35%, transparent); }
+.gradeQ { font-weight: 600; color: var(--dsw-alias-label-primary); }
+.gradeTag { font-weight: 700; }
+.gradeItemOk .gradeTag { color: var(--dsw-alias-state-success-primary, #3ecf8e); }
+.gradeItemNo .gradeTag { color: var(--dsw-alias-state-error-primary, #ff6b6b); }
+.gradeAns { color: var(--dsw-alias-label-secondary); }
+.gradeRight { color: var(--dsw-alias-state-error-primary, #ffb3b3); }
+.gradeExp { grid-column: 1 / -1; font-size: 11.5px; color: var(--dsw-alias-label-tertiary); }
 
 .switchRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; }
 .switchRow:focus-within .switch { box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-business-primary, #4f8ef7) 14%, transparent); }

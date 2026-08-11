@@ -47,22 +47,27 @@ description: Render structured interactive UI inline in your reply via the dsh-u
 - plot: `{"type":"plot","series":[{"expr":"a*sin(b*x)","label":"...","color":"#hex?","params":[{"name":"a","value":1,"min":0,"max":5,"animateTo":3,"durationMs":4000,"loop":true},{"name":"b","value":1,"min":0.5,"max":5}]}],"xMin":-6.28,"xMax":6.28,"title":"..."}` — SVG 函数图；**params 渲染成实时滑块**（拖动即时重绘，**y 轴锁定**=只变曲线不变数轴）；**animateTo 参数会显示播放按钮**（自动动画演示）；SVG 可拖拽平移、滚轮缩放；表达式支持 sin/cos/tan/asin/acos/atan/sqrt/cbrt/exp/log/ln/abs/floor/ceil/round/min/max/pow，常量 pi/e/tau，变量 x（其他字母=参数）
 
 ### 交互
-**action 字段（v2）**：button/input/select/checkbox/radio/switch 可带 `"action":"名字"` —— 用户点击/切换时会把 `[genui-action] 名字` 发回给你（模型），你可以据此响应（如"点击了刷新 → 重新生成数据"）。
+**本地优先（v2.6）**：UI 自己能做的状态变化——判卷、判题、重置、展开、选中——一律本地即时完成，**零模型往返**。action 只用于必须模型参与的事（生成新内容、执行工具、下一步建议）。**交互组件必须带 action：不带 action 的按钮渲染为禁用态，用户点不了；带 action 的按钮点击后有「已响应」本地反馈。**
 - button: `{"type":"button","label":"...","tone":"primary|danger|success|ghost","full":true?,"small":true?,"icon":"emoji?","action":"refresh"?}`
-- input: `{"type":"input","label":"...","placeholder":"...","inputType":"text|email|password","value":"..."}`
-- select: `{"type":"select","label":"...","options":["...","..."]}`
-- checkbox: `{"type":"checkbox","label":"...","checked":true?}`
-- radio: `{"type":"radio","label":"...","options":["...","..."],"selected":n?}`
-- switch: `{"type":"switch","label":"...","checked":true?}`
-- textarea: `{"type":"textarea","label":"...","placeholder":"...","rows":n?,"value":"..."}`
+- input: `{"type":"input","label":"...","placeholder":"...","inputType":"text|email|password","value":"...","action":"name"?,"id":"field-id"?}` — action 在失焦**和回车**时触发（回车带 `submit:true`）；带 `id` 的值刷新后保留、并被 submit 收集进 `fields`
+- select: `{"type":"select","label":"...","options":["...","..."],"action":"pick"?}`
+- checkbox: `{"type":"checkbox","label":"...","checked":true?,"action":"toggle"?}`
+- radio: `{"type":"radio","label":"...","options":["...","..."],"selected":n?,"action":"pick"?}` — 单选；**加 `"group":"题目名"` 进入聚合模式**：选择只本地记录、不发往返；**加 `"answer":正确下标或标签` + `"explanation":"解析"` 后，交卷在本地判卷**
+- submit: `{"type":"submit","label":"交卷","action":"grade","groups":["q1","q2","q3"],"resetAction":"redo"?}` — 交卷按钮：**题目带 answer 时点击本地立即判卷**（得分 + 每题 ✓/✗ + 解析，零往返），并锁定题目，点「重新作答」本地重置（`resetAction` 可选通知你）；**只有题目都没带 answer 时才**汇总成一次 `[genui-action]`（payload: `{answers:{q1:选项A,...},fields:{id:值},total,answered}`，`fields` 收集所有带 `id` 的输入）；`groups` 列出的题全部答完才可点
+- switch: `{"type":"switch","label":"...","checked":true?,"action":"toggle"?}`
+- textarea: `{"type":"textarea","label":"...","placeholder":"...","rows":n?,"value":"...","action":"save"?,"id":"field-id"?}` — action 在失焦和 **Ctrl/Cmd+Enter** 时触发；带 `id` 的值刷新后保留
 - tabs: `{"type":"tabs","tabs":[{"label":"...","items":[...]}]}`
 - accordion: `{"type":"accordion","items":[{"title":"...","items":[...]}]}`
 - copy: `{"type":"copy","label":"复制","text":"..."}`
 
+**状态持久化（v2.7）**：答案、交卷锁定、输入值按「会话 + 内容指纹」自动保存——用户刷新页面/重开会话，同一块 UI 的状态原样恢复；你重渲染**相同内容**会保留用户状态，渲染**新内容**（换题等）自动从头开始。
+
+**卷子模式（多道选择题）**：每题一个 radio（带唯一 `group` + `answer` + `explanation`），最后放一个 submit（`groups` 列出全部题号）——用户全部选完点交卷，**分数和对错当场在 UI 里出现**，不用等你。只有换新题/进阶建议才发 action。不要每题单独发 action（会刷屏）。
+
 ### 高级
 - mermaid: `{"type":"mermaid","code":"graph TD\\nA-->B"}` — flowchart/sequence/class/gantt/pie/er/state/journey
 - scene3d: `{"type":"scene3d","title":"...","meshes":[{"shape":"box|sphere|cone|cylinder|torus","color":"#hex?","size":n|[w,h,d]?,"position":[x,y,z]?,"rotation":[rx,ry,rz]?,"scale":n?|[...]?}],"ambient":0-2?,"background":"#hex?"}` — 3D WebGL，可拖拽旋转、滚轮缩放；mesh 数量 1–5 个
-- quiz: `{"type":"quiz","question":"...","options":[{"label":"...","correct":true?,"feedback":"..."?}],"explanation":"...","id":"..."?}` — 教学问答：点选即判题、可重试；`id` 变化时重置
+- quiz: `{"type":"quiz","question":"...","options":[{"label":"...","correct":true?,"feedback":"..."?}],"explanation":"...","id":"..."?,"action":"answer"?}` — 教学问答：点选即判题、可重试；`id` 变化时重置；带 action 时答案同时回传模型
 
 ## 什么时候用：内容类型 → 组件映射
 
