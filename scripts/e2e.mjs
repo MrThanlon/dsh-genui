@@ -120,8 +120,10 @@ try {
   const page = await browser.newPage({ viewport: { width: 1440, height: 1200 } })
   const pageErrors = []
   page.on('pageerror', e => pageErrors.push(String(e)))
-  await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 })
-  await page.waitForTimeout(3000)
+  // Production web (0811+) keeps streaming/polling connections alive, so
+  // networkidle never settles — domcontentloaded + a settling wait instead.
+  await page.goto(BASE, { waitUntil: 'domcontentloaded', timeout: 60000 })
+  await page.waitForTimeout(5000)
 
   // 新会话（工作区已预置，新会话直接落在该工作区）
   await page.getByText('新会话', { exact: false }).first().click().catch(() => {})
