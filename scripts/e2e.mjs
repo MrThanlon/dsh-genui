@@ -19,8 +19,10 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { randomUUID } from 'node:crypto'
+import { mkdtemp, mkdir, copyFile, rm, writeFile } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
@@ -70,6 +72,36 @@ try {
   }
 
   // ── 启动 dsh web ────────────────────────────────────────────────────────
+  // 0810+ GUI: a fresh profile starts with no workspace, so the composer
+  // stays inert until one exists. The workspace registry (re)hydrates from
+  // storages/workspace.json — seed it with REPO_ROOT before boot so the
+  // picker lists one workspace and 新会话 opens straight into a usable
+  // composer (no native directory picker needed in headless).
+  log('预置工作区注册表...')
+  const workspaceId = randomUUID()
+  const now = new Date().toISOString()
+  const workspaceReg = {
+    unit: { name: 'workspace', version: 2 },
+    global: { initialized: true, workspaceIds: [workspaceId], archivedSessionIds: [] },
+    tables: { workspaces: { [workspaceId]: {
+      path: REPO_ROOT, title: 'dsh-genui-e2e', sessionIds: [], createdAt: now, updatedAt: now,
+    } } },
+  }
+  await mkdir(join(DSH_HOME, 'storages'), { recursive: true })
+  await writeFile(join(DSH_HOME, 'storages/workspace.json'), JSON.stringify(workspaceReg, null, 2))
+
+  // The isolated DSH_HOME has no model config: dsh web reads provider/model
+  // from $DSH_HOME/settings.yaml, not from the real ~/.dsh. Copy the host's
+  // settings so the spawned web talks to the same provider (the key itself
+  // already flows through the DEEPSEEK_API_KEY env var).
+  const hostSettings = join(homedir(), '.dsh/settings.yaml')
+  if (existsSync(hostSettings)) {
+    await copyFile(hostSettings, join(DSH_HOME, 'settings.yaml'))
+    log('已复制模型配置 settings.yaml')
+  } else {
+    log('警告: 未找到 ~/.dsh/settings.yaml，模型可能不可用')
+  }
+
   log(`启动 dsh web (port ${PORT}, DSH_HOME=${DSH_HOME})...`)
   const child = spawn('dsh', ['web', '--port', String(PORT)], { env, detached: true, stdio: ['ignore', 'ignore', 'ignore'] })
   webPid = child.pid
@@ -91,12 +123,18 @@ try {
   await page.goto(BASE, { waitUntil: 'networkidle', timeout: 60000 })
   await page.waitForTimeout(3000)
 
-  // 新会话
+  // 新会话（工作区已预置，新会话直接落在该工作区）
   await page.getByText('新会话', { exact: false }).first().click().catch(() => {})
   await page.waitForTimeout(1500)
 
-  // 发送 prompt
-  await page.locator('textarea').first().fill(PROMPT)
+  // 发送 prompt（composer 已启用才填；未启用则重试等 UI 就绪）
+  const composer = page.locator('textarea').first()
+  await composer.waitFor({ state: 'visible', timeout: 15000 })
+  await page.waitForFunction(() => {
+    const t = document.querySelector('textarea')
+    return t !== null && !t.disabled
+  }, { timeout: 15000 }).catch(() => {})
+  await composer.fill(PROMPT)
   await page.getByRole('button', { name: '发送消息' }).click().catch(() => page.keyboard.press('Enter'))
   log('prompt 已发送，等待模型输出 dsh-ui fence...')
 
@@ -115,7 +153,8 @@ try {
   }
   if (blocks === 0) {
     await page.screenshot({ path: join(process.cwd(), 'e2e-fail-timeout.png') })
-    fail(`模型 180s 内未输出可渲染的 dsh-ui fence（pageerrors: ${pageErrors.slice(0, 3).join(' | ') || '无'}）`)
+    const tail = (await lastText()).slice(0, 300)
+    fail(`模型 180s 内未输出可渲染的 dsh-ui fence（pageerrors: ${pageErrors.slice(0, 3).join(' | ') || '无'}）最后消息: ${tail || '(空)'}`)
   }
   log(`✓ fence 渲染成功（${blocks} 个 data-genui 块）`)
 
@@ -129,7 +168,17 @@ try {
     btn.click()
     return true
   })
-  if (!clicked) fail('渲染块内未找到可点击按钮')
+  if (!clicked) {
+    const dump = await page.evaluate(() => {
+      const block = document.querySelector('[data-genui]')
+      if (!block) return '(no block)'
+      const clickables = [...block.querySelectorAll('button, [role="button"], input[type="submit"], [data-genui] [class*="btn" i]')]
+        .map(b => `${b.tagName}.${b.className} "${(b.textContent ?? '').trim().slice(0, 30)}"`)
+      return `clickables: ${clickables.length ? clickables.join(' | ') : '(none)'} | html: ${block.innerHTML.slice(0, 200)}`
+    })
+    await page.screenshot({ path: join(process.cwd(), 'e2e-fail-nobtn.png') })
+    fail(`渲染块内未找到可点击按钮 — ${dump}`)
+  }
   log('已点击 action 按钮，等待模型响应...')
 
   // 等待模型收到 [genui-action] 并响应（新 fence 或回复文本变化）
