@@ -21,6 +21,36 @@ fail() { printf "${RED}✗ %s${NC}\n" "$1"; exit 1; }
 ok()   { printf "${GREEN}✓ %s${NC}\n" "$1"; }
 warn() { printf "${YELLOW}! %s${NC}\n" "$1"; }
 
+# ── skill 同步：模型读的是 ~/.dsh/skills/genui/SKILL.md，不是仓库那份 ──
+# 从已安装的包内解析 SKILL.md（成员机器是 git 安装；开发机 link 安装会
+# 解析到本地 checkout），cp 到 skill 目录。已是同一文件的符号链接则跳过
+# （开发机用 ln -s 指向 checkout，防止再次漂移）。
+sync_skill() {
+  echo "同步 genui skill 到 \$DSH_HOME/skills/genui ..."
+  SKILL_FILE=""
+  if command -v node >/dev/null 2>&1; then
+    SKILL_FILE=$(node -e "
+const path = require('path')
+try {
+  const pkg = require.resolve('@deepseek-ai/dsh-genui/package.json', { paths: ['$DSH_HOME/profiles/$PROFILE'] })
+  console.log(path.join(path.dirname(pkg), 'SKILL.md'))
+} catch { process.exit(1) }
+" 2>/dev/null || true)
+  fi
+  if [ -n "$SKILL_FILE" ] && [ -f "$SKILL_FILE" ]; then
+    DEST="$DSH_HOME/skills/genui/SKILL.md"
+    if [ -L "$DEST" ] && [ "$(readlink "$DEST")" = "$SKILL_FILE" ]; then
+      ok "skill 已是最新（符号链接指向同一文件）"
+    else
+      mkdir -p "$DSH_HOME/skills/genui"
+      cp "$SKILL_FILE" "$DEST"
+      ok "skill 已同步（$SKILL_FILE）"
+    fi
+  else
+    warn "未能定位已安装包内的 SKILL.md，跳过 skill 同步（不影响插件本身）"
+  fi
+}
+
 echo "${BOLD}== dsh-genui 安装（profile: $PROFILE）==${NC}"
 
 # ── 前置 1: dsh ────────────────────────────────────────────────────────────
@@ -51,6 +81,7 @@ ok "GitHub 私有仓库可访问"
 PROFILE_PKG="$DSH_HOME/profiles/$PROFILE/package.json"
 if [ -f "$PROFILE_PKG" ] && grep -q "dsh-genui" "$PROFILE_PKG" 2>/dev/null; then
   warn "插件已在 profile '$PROFILE' 中。"
+  sync_skill
   printf "  想重装就手动执行: dsh plugin --profile %s remove @deepseek-ai/dsh-genui，再跑本脚本。\n" "$PROFILE"
   printf "  否则直接: 重启 dsh web + 硬刷新 即可验证。\n"
   exit 0
@@ -59,6 +90,7 @@ fi
 # ── 安装 ───────────────────────────────────────────────────────────────────
 echo "安装中（首次会下载 mermaid/three 等依赖，约 1-2 分钟）..."
 dsh plugin --profile "$PROFILE" add "$REPO_URL"
+sync_skill
 
 echo
 ok "安装完成！"
