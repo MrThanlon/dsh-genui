@@ -5,4 +5,3 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/src/clie
  * the summary fallback is shown.
  */
 export declare function GenuiToolView({ toolName, block, sessionId }: ToolCallViewProps): import("react").JSX.Element;
-//# sourceMappingURL=toolview.d.ts.map

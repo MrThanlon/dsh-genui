@@ -23,4 +23,3 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
  * `ctx.tools.register` consumes it exactly like a `defineTool` result.
  */
 export declare function createRenderUiTool(): ToolDefinition;
-//# sourceMappingURL=tool.d.ts.map

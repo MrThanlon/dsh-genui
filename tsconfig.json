@@ -11,10 +11,6 @@
     ],
     "types": [],
     "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "composite": true,
-    "incremental": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
@@ -72,7 +68,8 @@
       "cosmokit": [
         "../../.dsh/source/current/vendor/cosmokit/lib/types/index.d.ts"
       ]
-    }
+    },
+    "emitDeclarationOnly": true
   },
   "include": [
     "src"

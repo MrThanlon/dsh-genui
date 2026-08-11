@@ -7,4 +7,3 @@
 import type { GenuiSpec } from './spec.ts';
 /** A single spec covering all 38 node types in the vocabulary. */
 export declare const gallerySpec: GenuiSpec;
-//# sourceMappingURL=gallery.d.ts.map

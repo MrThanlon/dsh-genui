@@ -1,22 +1,33 @@
-/**
- * Partial GenUI spec parsing: extract the components that are already
- * complete from a still-growing ```dsh-ui fence body, so the UI can render
- * top-down as the model writes — each finished component appears the moment
- * its JSON object closes, instead of the whole block waiting for the fence.
- *
- * Strategy (tolerant, white-list-agnostic):
- * 1. Full parse first (the common settled case).
- * 2. Scan for every position where all brackets are balanced; try each as a
- *    complete prefix (longest first). This covers trailing junk like a
- *    closing fence or a stray comma.
- * 3. If nothing parses, walk backward from each closing `}`: truncate there
- *    and close the remaining open brackets. This yields the longest run of
- *    finished array elements — an unfinished trailing element is dropped.
- *
- * The result is only ever a PREFIX of the intended spec, so it is always
- * safe to render: components already present are complete and valid.
- */
 import { type GenuiSpec } from './spec.ts';
+/** Default repair-candidate budget (adjustable; see the design doc). */
+export declare const MAX_PARTIAL_REPAIR_ATTEMPTS = 32;
+/** Override the repair-candidate budget (tests / tuning). */
+export declare function setMaxPartialRepairAttempts(n: number): void;
+/** One repair candidate: a balanced prefix of the body ending at `end`,
+ *  plus the closing brackets to append (empty when already balanced). */
+export interface PartialCandidate {
+    end: number;
+    closingSuffix: string;
+}
+/** Single left-to-right pass over the raw body. Tracks the bracket stack
+ *  (skipping strings/escapes correctly) and records:
+ *  - every position where the prefix is fully balanced (trailing comma or
+ *    fence tail) — candidate with an empty closing suffix;
+ *  - every `}` object close whose remaining depth fits the spec budget —
+ *    candidate with the remaining brackets closed (an unfinished trailing
+ *    element).
+ *  Candidates are ring-buffered to the attempts budget (the LAST pushes are
+ *  the longest), then returned longest-first, deduplicated by end. The scan
+ *  stops at the first unbalanced close — earlier balanced prefixes remain
+ *  valid candidates.
+ *
+ * Exposed for tests (the `scannedChars` diagnostic); not exported from the
+ * package entry. The parser calls this exactly once per parse.
+ */
+export declare function collectPartialCandidates(raw: string): {
+    candidates: PartialCandidate[];
+    scannedChars: number;
+};
 /**
  * Parse a possibly incomplete genui spec body.
  * @param raw - the fence body as accumulated so far.
@@ -24,4 +35,3 @@ import { type GenuiSpec } from './spec.ts';
  *   usable has been written yet.
  */
 export declare function parsePartialGenuiSpec(raw: string): GenuiSpec | null;
-//# sourceMappingURL=parse-partial.d.ts.map

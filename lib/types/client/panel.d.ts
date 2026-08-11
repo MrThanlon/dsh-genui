@@ -13,4 +13,3 @@ export type GenuiPanelProps = PropsRuntime<'conversation.input.dock'> & GenuiPan
  * header always shows the current panel title.
  */
 export declare function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps): import("react").JSX.Element | null;
-//# sourceMappingURL=panel.d.ts.map

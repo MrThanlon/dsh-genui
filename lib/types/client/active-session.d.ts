@@ -18,4 +18,3 @@ export type ActiveSession = string | null;
 export declare function getActiveSessionId(): ActiveSession;
 /** Set the current session id (from the sessions feed subscription). */
 export declare function setActiveSessionId(id: ActiveSession): void;
-//# sourceMappingURL=active-session.d.ts.map

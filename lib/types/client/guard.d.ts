@@ -75,6 +75,15 @@ export interface GenuiValidation {
  */
 export declare function repairGenuiSpec(value: unknown): GenuiSpec | null;
 /**
+ * Count the nodes of a spec tree (every item, descending into tabs /
+ * accordion / file-tree containers — the same descent `validateGenuiSpec`
+ * walks). Shared by the panel fold (node-budget gate) and validation, so
+ * the panel never runs a second, divergent traversal. `cap` bounds the walk
+ * for hostile inputs; the panel passes `PANEL_LIMITS.maxNodes + 1` to detect
+ * overflow without counting the whole tree.
+ */
+export declare function countGenuiNodes(value: unknown, cap?: number): number;
+/**
  * Validate a raw spec value against the white list and limits, collecting
  * human-readable problems. Unlike repair this never mutates: it is a
  * diagnostic for tests and tooling. Unknown `type`s are reported (a plugin
@@ -82,4 +91,3 @@ export declare function repairGenuiSpec(value: unknown): GenuiSpec | null;
  * know, so it flags them as warnings).
  */
 export declare function validateGenuiSpec(value: unknown): GenuiValidation;
-//# sourceMappingURL=guard.d.ts.map

@@ -29,4 +29,3 @@ export declare const GENUI_ACTION_DEBOUNCE_MS = 300;
  * carries no items (the fence renderer already refused non-specs before us).
  */
 export declare const GenuiBlock: import("react").NamedExoticComponent<GenuiBlockProps>;
-//# sourceMappingURL=GenuiBlock.d.ts.map

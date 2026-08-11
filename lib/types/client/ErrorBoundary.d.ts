@@ -28,4 +28,3 @@ export declare class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     render(): ReactNode;
 }
 export {};
-//# sourceMappingURL=ErrorBoundary.d.ts.map

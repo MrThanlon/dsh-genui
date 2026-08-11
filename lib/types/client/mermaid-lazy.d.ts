@@ -24,4 +24,3 @@ export declare function repairMermaidSource(code: string): string;
  *   fails the sanitization check.
  */
 export declare function renderMermaid(code: string): Promise<string>;
-//# sourceMappingURL=mermaid-lazy.d.ts.map

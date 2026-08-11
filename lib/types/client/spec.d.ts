@@ -415,4 +415,3 @@ export interface GenuiQuiz {
 export declare function parseGenuiSpec(raw: string): GenuiSpec | null;
 /** Basic structural guard: is this object a valid GenuiSpec? */
 export declare function isGenuiSpec(value: unknown): value is GenuiSpec;
-//# sourceMappingURL=spec.d.ts.map

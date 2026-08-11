@@ -27,4 +27,3 @@ export declare const DEFAULT_PANEL_SPEC: GenuiSpec;
  * catches `/panel clear` style args.
  */
 export declare function createPanelSlashSource(sendInstruction: (sessionId: SessionId, instruction: string) => void): SlashSource;
-//# sourceMappingURL=panel-command.d.ts.map

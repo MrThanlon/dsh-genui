@@ -16,4 +16,3 @@ import type { GenuiScene3D } from './spec.ts';
  * @returns a disposer that removes the renderer and its context.
  */
 export declare function mountScene(container: HTMLElement, scene: GenuiScene3D): Promise<() => void>;
-//# sourceMappingURL=scene3d-lazy.d.ts.map

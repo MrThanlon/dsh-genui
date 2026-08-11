@@ -41,4 +41,3 @@ export declare function compileMathExpr(expr: string, options?: SafeMathOptions)
  * @returns [x, y] pairs; non-finite samples are dropped.
  */
 export declare function sampleExpr(expr: string, xMin: number, xMax: number, samples?: number, params?: Record<string, number>): Array<[number, number]>;
-//# sourceMappingURL=safe-math.d.ts.map

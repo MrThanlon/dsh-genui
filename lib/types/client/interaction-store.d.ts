@@ -41,4 +41,3 @@ export declare function fenceStateKey(sessionId: string, fenceKey: number | stri
 export declare function panelStateKey(sessionId: string, raw: string): string;
 /** Build the durable state key for a render_ui tool card (call-keyed). */
 export declare function toolStateKey(sessionId: string, callId: string): string;
-//# sourceMappingURL=interaction-store.d.ts.map

@@ -20,4 +20,3 @@ export declare const GENUI_SECTION_TEXT = "You can render interactive UI compone
  */
 export declare const inject: string[];
 export declare function apply(ctx: Context): void;
-//# sourceMappingURL=index.d.ts.map

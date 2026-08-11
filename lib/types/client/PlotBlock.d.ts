@@ -37,4 +37,3 @@ export interface PlotBlockProps {
 }
 /** Render one plot: grid, axes, one polyline per series, legend, sliders. */
 export declare const PlotBlock: import("react").NamedExoticComponent<PlotBlockProps>;
-//# sourceMappingURL=PlotBlock.d.ts.map
