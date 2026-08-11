@@ -19,12 +19,6 @@
  * rejections are DETERMINISTIC (no LRU eviction: eviction would make the
  * fold depend on arrival order).
  *
- * The `publishPanelSpec` / `publishPanelAppend` facade below is the
- * TRANSITIONAL path for hosts without the fence-source contract (sessionId
- * resolved from the active-session feed, identity from the local fence key,
- * fences publishing as the latest possible order to preserve today's
- * "fence wins over tools" behavior). It is removed once the host contract
- * ships — the operation model above is the only panel path then.
  */
 import type { GenuiSpec, GenuiTab } from './spec.ts'
 import { countGenuiNodes } from './guard.ts'
@@ -288,46 +282,6 @@ export function mergePanelSpecs(prev: GenuiSpec | null, next: GenuiSpec): GenuiS
     return { ...base, items: [{ type: 'tabs', tabs: [...merged.values()] }] }
   }
   return { ...base, items: [...prev.items, ...next.items] }
-}
-
-/* ---------------- transitional facade (old hosts without the fence-source
- * contract) ---------------- */
-
-let directCounter = 0
-
-/**
- * TRANSITIONAL: direct replace publish, one fresh op per call (same-reference
- * publishes stay silent through the snapshot identity check). `null` clears
- * the session unconditionally (any later publish rebuilds). Used by the
- * legacy fence path and tests; removed with the old-host path.
- */
-export function publishPanelSpec(sessionId: string, spec: GenuiSpec | null, seq = 0): void {
-  if (spec === null) {
-    clearSessionPanel(sessionId)
-    return
-  }
-  applyPanelOperation(sessionId, {
-    sourceId: `direct:${directCounter++}`,
-    order: [seq, -1, 0],
-    mode: 'replace',
-    spec,
-  })
-}
-
-/**
- * TRANSITIONAL: append publish; a repeated `sourceId` merges exactly once
- * (renderer re-invocations of the same completed fence), distinct sources
- * always merge. Used by the legacy fence path; removed with the old-host
- * path. `seq` defaults to the maximum so legacy fences keep winning over
- * tool results exactly as before the operation model.
- */
-export function publishPanelAppend(sessionId: string, spec: GenuiSpec, seq = Number.MAX_SAFE_INTEGER, sourceId?: string): void {
-  applyPanelOperation(sessionId, {
-    sourceId: sourceId ?? `append:${directCounter++}`,
-    order: [seq, -1, 0],
-    mode: 'append',
-    spec,
-  })
 }
 
 /* ---------------- expand requests ---------------- */

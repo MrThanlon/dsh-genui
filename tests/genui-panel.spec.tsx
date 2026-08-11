@@ -5,11 +5,10 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { renderGenuiFence } from '../src/client/index.tsx'
-import { setActiveSessionId } from '../src/client/active-session.ts'
 import { repairGenuiSpec } from '../src/client/guard.ts'
 import { GenuiPanel } from '../src/client/panel.tsx'
 import {
-  applyPanelOperation, getPanelSpec, publishPanelSpec, setLocalPanel, setPanelLimits, subscribePanel,
+  applyPanelOperation, clearSessionPanel, getPanelSpec, setLocalPanel, setPanelLimits, subscribePanel,
 } from '../src/client/panel-store.ts'
 import { GenuiToolView } from '../src/client/toolview.tsx'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
@@ -18,19 +17,30 @@ import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/src/clie
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
-  publishPanelSpec('s1', null)
-  publishPanelSpec('s2', null)
-  setActiveSessionId(null)
+  clearSessionPanel('s1')
+  clearSessionPanel('s2')
 })
 
 const text = (content: string) => ({ type: 'text', content })
+
+/** Direct replace publish (the operation-model spelling of the old facade). */
+let directSeq = 0
+function direct(sessionId: string, spec: unknown, seq?: number): void {
+  const order = seq ?? directSeq
+  applyPanelOperation(sessionId, {
+    sourceId: `direct:${directSeq++}`,
+    order: [order, -1, 0],
+    mode: 'replace',
+    spec: spec as never,
+  })
+}
 
 describe('panel store', () => {
   it('publishes and reads per session, isolated across sessions', () => {
     const a = { items: [text('A')] }
     const b = { items: [text('B')] }
-    publishPanelSpec('s1', a)
-    publishPanelSpec('s2', b)
+    direct('s1', a)
+    direct('s2', b)
     expect(getPanelSpec('s1')).toBe(a)
     expect(getPanelSpec('s2')).toBe(b)
   })
@@ -39,20 +49,20 @@ describe('panel store', () => {
     const spec = { items: [text('x')] }
     const fn = vi.fn()
     const unsub = subscribePanel(fn)
-    publishPanelSpec('s1', spec)
+    direct('s1', spec)
     expect(fn).toHaveBeenCalledTimes(1)
-    publishPanelSpec('s1', spec) // same reference: no notification
+    direct('s1', spec) // same reference: no notification
     expect(fn).toHaveBeenCalledTimes(1)
-    publishPanelSpec('s1', { items: [text('y')] })
+    direct('s1', { items: [text('y')] })
     expect(fn).toHaveBeenCalledTimes(2)
     unsub()
-    publishPanelSpec('s1', { items: [text('z')] })
+    direct('s1', { items: [text('z')] })
     expect(fn).toHaveBeenCalledTimes(2)
   })
 
   it('clears the panel on null publish', () => {
-    publishPanelSpec('s1', { items: [text('x')] })
-    publishPanelSpec('s1', null)
+    direct('s1', { items: [text('x')] })
+    clearSessionPanel('s1')
     expect(getPanelSpec('s1')).toBeNull()
   })
 })
@@ -68,7 +78,7 @@ describe('GenuiPanel dock', () => {
   })
 
   it('shows a resize handle on the top edge when expanded and resizes the body on drag', () => {
-    publishPanelSpec('s1', { title: 'T', items: [text('x')] })
+    direct('s1', { title: 'T', items: [text('x')] })
     const { container } = renderPanel()
     // collapsed: no handle
     expect(container.querySelector('[role="separator"][aria-label="调整面板高度"]')).toBeNull()
@@ -95,7 +105,7 @@ describe('GenuiPanel dock', () => {
   })
 
   it('pointercancel ends the drag and leaves no listeners behind', () => {
-    publishPanelSpec('s1', { title: 'T', items: [text('x')] })
+    direct('s1', { title: 'T', items: [text('x')] })
     const { container, unmount } = renderPanel()
     fireEvent.click(container.querySelector('[aria-expanded="false"]')!)
     const handle = container.querySelector('[role="separator"][aria-label="调整面板高度"]')!
@@ -110,8 +120,8 @@ describe('GenuiPanel dock', () => {
   })
 
   it('renders collapsed with the title, and reveals content on expand (per session)', () => {
-    publishPanelSpec('s1', { title: '面板 A', items: [text('内容 A')] })
-    publishPanelSpec('s2', { title: '面板 B', items: [text('内容 B')] })
+    direct('s1', { title: '面板 A', items: [text('内容 A')] })
+    direct('s2', { title: '面板 B', items: [text('内容 B')] })
     const { container } = renderPanel('s1')
     expect(container.querySelector('[data-genui-panel]')).not.toBeNull()
     // collapsed by default: title visible, content hidden
@@ -129,10 +139,10 @@ describe('GenuiPanel dock', () => {
 
   it('updates in place when a new spec is published (expanded)', () => {
     const { container } = renderPanel()
-    act(() => { publishPanelSpec('s1', { title: 'T', items: [text('第一版')] }) })
+    act(() => { direct('s1', { title: 'T', items: [text('第一版')] }) })
     fireEvent.click(container.querySelector('[aria-expanded="false"]')!)
     expect(screen.getByText('第一版')).toBeTruthy()
-    act(() => { publishPanelSpec('s1', { title: 'T', items: [text('第二版')] }) })
+    act(() => { direct('s1', { title: 'T', items: [text('第二版')] }) })
     expect(screen.queryByText('第一版')).toBeNull()
     expect(screen.getByText('第二版')).toBeTruthy()
     expect(container.querySelectorAll('[data-genui-panel]')).toHaveLength(1)
@@ -141,7 +151,7 @@ describe('GenuiPanel dock', () => {
   it('routes component actions through sendGenuiAction (debounced)', () => {
     vi.useFakeTimers()
     const sendGenuiAction = vi.fn()
-    publishPanelSpec('s1', {
+    direct('s1', {
       title: 'T',
       items: [{ type: 'button', label: '刷新', action: 'refresh' }],
     })
@@ -193,10 +203,17 @@ describe('GenuiToolView publishes to the panel store', () => {
 })
 
 describe('panel-only fences', () => {
-  it('publishes a panel:true fence to the active session and renders nothing', () => {
-    setActiveSessionId('s1')
-    const node = renderGenuiFence('{"panel":true,"title":"面板","items":[{"type":"text","content":"面板内容"}]}', 0)
-    expect(node).toBeNull()
+  const ctx = (seq: number, block = 0, fence = 0) => ({
+    sessionId: 's1',
+    source: { id: JSON.stringify(['assistant', seq, block, fence]), order: [seq, block, fence] as const },
+  })
+
+  it('publishes a panel:true fence from a settled source context and renders nothing', () => {
+    const node = renderGenuiFence('{"panel":true,"title":"面板","items":[{"type":"text","content":"面板内容"}]}', 0, ctx(10))
+    // The keyed publisher element renders nothing into the message flow…
+    const { container } = render(node as never)
+    expect(container.textContent).toBe('')
+    // …and folds the panel exactly once.
     const published = getPanelSpec('s1')
     expect(published).not.toBeNull()
     expect(published!.panel).toBe(true)
@@ -204,18 +221,21 @@ describe('panel-only fences', () => {
   })
 
   it('keeps ordinary fences rendering inline without touching the panel', () => {
-    setActiveSessionId('s1')
-    publishPanelSpec('s1', null)
-    const node = renderGenuiFence('{"title":"普通","items":[{"type":"text","content":"正文"}]}', 0)
+    clearSessionPanel('s1')
+    const node = renderGenuiFence('{"title":"普通","items":[{"type":"text","content":"正文"}]}', 0, ctx(10))
     expect(node).not.toBeNull()
     expect(getPanelSpec('s1')).toBeNull()
   })
 
-  it('skips publishing when no session is active', () => {
-    setActiveSessionId(null)
-    publishPanelSpec('s1', null)
-    const node = renderGenuiFence('{"panel":true,"items":[{"type":"text","content":"x"}]}', 0)
-    expect(node).toBeNull()
+  it('skips publishing without a settled source (streaming / non-conversation)', () => {
+    clearSessionPanel('s1')
+    // context without a source: streaming render — the panel stays untouched
+    const streaming = renderGenuiFence('{"panel":true,"items":[{"type":"text","content":"x"}]}', 0, { sessionId: 's1' })
+    expect(streaming).toBeNull()
+    expect(getPanelSpec('s1')).toBeNull()
+    // no context at all (non-conversation surface): same behavior
+    const bare = renderGenuiFence('{"panel":true,"items":[{"type":"text","content":"x"}]}', 0)
+    expect(bare).toBeNull()
     expect(getPanelSpec('s1')).toBeNull()
   })
 
@@ -237,16 +257,16 @@ describe('panel operation model (real order, no Infinity)', () => {
   it('rejects an older seq publish after a newer one', () => {
     const newer = { items: [text('新')] }
     const older = { items: [text('旧')] }
-    publishPanelSpec('s1', newer, 100)
-    publishPanelSpec('s1', older, 50) // replay of an older tool result
+    direct('s1', newer, 100)
+    direct('s1', older, 50) // replay of an older tool result
     expect(getPanelSpec('s1')).toBe(newer)
   })
 
   it('accepts the same-seq overwrite (later publish wins ties)', () => {
     const a = { items: [text('A')] }
     const b = { items: [text('B')] }
-    publishPanelSpec('s1', a, 10)
-    publishPanelSpec('s1', b, 10) // same seq: later wins
+    direct('s1', a, 10)
+    direct('s1', b, 10) // same seq: later wins
     expect(getPanelSpec('s1')).toBe(b)
   })
 
@@ -305,11 +325,11 @@ describe('panel operation model (real order, no Infinity)', () => {
   })
 
   it('clears unconditionally via null and lets later publishes rebuild', () => {
-    publishPanelSpec('s1', { items: [text('x')] }, 5)
-    publishPanelSpec('s1', null)
+    direct('s1', { items: [text('x')] }, 5)
+    clearSessionPanel('s1')
     expect(getPanelSpec('s1')).toBeNull()
     // after a clear, any publish rebuilds the panel (fence or tool result)
-    publishPanelSpec('s1', { items: [text('y')] }, 4)
+    direct('s1', { items: [text('y')] }, 4)
     expect(getPanelSpec('s1')?.items).toHaveLength(1)
   })
 })

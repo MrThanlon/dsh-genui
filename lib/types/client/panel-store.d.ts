@@ -19,12 +19,6 @@
  * rejections are DETERMINISTIC (no LRU eviction: eviction would make the
  * fold depend on arrival order).
  *
- * The `publishPanelSpec` / `publishPanelAppend` facade below is the
- * TRANSITIONAL path for hosts without the fence-source contract (sessionId
- * resolved from the active-session feed, identity from the local fence key,
- * fences publishing as the latest possible order to preserve today's
- * "fence wins over tools" behavior). It is removed once the host contract
- * ships — the operation model above is the only panel path then.
  */
 import type { GenuiSpec } from './spec.ts';
 /** Panel scale limits — adjustable defaults (design doc: scale limits are
@@ -82,21 +76,6 @@ export declare function subscribePanel(listener: () => void): () => void;
  * there is nothing to merge into. Export for tests.
  */
 export declare function mergePanelSpecs(prev: GenuiSpec | null, next: GenuiSpec): GenuiSpec;
-/**
- * TRANSITIONAL: direct replace publish, one fresh op per call (same-reference
- * publishes stay silent through the snapshot identity check). `null` clears
- * the session unconditionally (any later publish rebuilds). Used by the
- * legacy fence path and tests; removed with the old-host path.
- */
-export declare function publishPanelSpec(sessionId: string, spec: GenuiSpec | null, seq?: number): void;
-/**
- * TRANSITIONAL: append publish; a repeated `sourceId` merges exactly once
- * (renderer re-invocations of the same completed fence), distinct sources
- * always merge. Used by the legacy fence path; removed with the old-host
- * path. `seq` defaults to the maximum so legacy fences keep winning over
- * tool results exactly as before the operation model.
- */
-export declare function publishPanelAppend(sessionId: string, spec: GenuiSpec, seq?: number, sourceId?: string): void;
 /** Request the panel dock to expand for a session (e.g. the /panel command). */
 export declare function requestPanelExpand(sessionId: string): void;
 /** Current expand token for a session (useSyncExternalStore getSnapshot). */

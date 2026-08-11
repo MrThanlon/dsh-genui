@@ -16,25 +16,8 @@
  * @module @deepseek-ai/dsh-genui/client
  */
 import type { Context } from '@deepseek-ai/cordis';
-import { type Key, type ReactNode } from 'react';
-/**
- * Plugin-local fence context types. Structurally identical to the host's
- * `FenceRenderContext`/`FenceSource` (dsh-client-ui-primitives) once the
- * fence-source contract ships; defined here so this plugin builds and runs
- * against hosts without the contract (optional third renderer argument,
- * absent context = transitional path). Remove the local copies and the
- * registration cast when the host contract lands.
- */
-export interface GenuiFenceSource {
-    id: string;
-    order: readonly [messageSeq: number, textBlockIndex: number, fenceIndex: number];
-}
-export interface GenuiFenceContext {
-    sessionId?: string;
-    source?: GenuiFenceSource;
-}
-export type GenuiFenceRenderer = (raw: string, key: Key, context?: GenuiFenceContext) => ReactNode;
-export declare const renderGenuiFence: GenuiFenceRenderer;
+import { type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives';
+export declare const renderGenuiFence: FenceRenderer;
 /** Cordis client entry: register the fence renderer on boot, the keyed
  * toolview for the render_ui tool, and the session panel dock; returning the
  * disposers lets cordis tear all registrations down on plugin unload. */

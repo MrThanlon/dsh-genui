@@ -20,9 +20,8 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type Key, type ReactNode } from 'react'
+import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type Key } from 'react'
 import { CodeBlock, registerFenceRenderer, type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives'
-import { getActiveSessionId, setActiveSessionId } from './active-session.ts'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { repairGenuiSpec, validateGenuiSpec } from './guard.ts'
@@ -30,7 +29,7 @@ import { fenceStateKey } from './interaction-store.ts'
 import { parsePartialGenuiSpec } from './parse-partial.ts'
 import { createPanelSlashSource } from './panel-command.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
-import { applyPanelOperation, PANEL_LIMITS, publishPanelAppend, publishPanelSpec, type PanelOperationStatus } from './panel-store.ts'
+import { applyPanelOperation, PANEL_LIMITS, type PanelOperationStatus } from './panel-store.ts'
 import { GenuiToolView } from './toolview.tsx'
 import type { GenuiSpec } from './spec.ts'
 import type { SlashServiceContract } from '@deepseek-ai/dsh-client-ui-slash/client'
@@ -43,9 +42,9 @@ import type { SlashServiceContract } from '@deepseek-ai/dsh-client-ui-slash/clie
  * degrade gracefully instead of stalling the UI.
  *
  * A spec flagged `"panel": true` is PANEL-ONLY: it publishes to the session
- * panel store (targeted by the active-session feed) and renders nothing in
- * the message flow — the model updates the dock surface without stacking UI
- * blocks per round. */
+ * panel store (via the settled fence source context) and renders nothing
+ * in the message flow — the model updates the dock surface without stacking
+ * UI blocks per round. */
 /** A fence body counts as complete when it parses as a whole JSON value —
  * used to gate append publishes, which must merge exactly once (never per
  * streaming chunk). */
@@ -168,26 +167,6 @@ function SpecIssuesNote({ issues }: { issues: string[] }) {
 }
 
 /**
- * Plugin-local fence context types. Structurally identical to the host's
- * `FenceRenderContext`/`FenceSource` (dsh-client-ui-primitives) once the
- * fence-source contract ships; defined here so this plugin builds and runs
- * against hosts without the contract (optional third renderer argument,
- * absent context = transitional path). Remove the local copies and the
- * registration cast when the host contract lands.
- */
-export interface GenuiFenceSource {
-  id: string
-  order: readonly [messageSeq: number, textBlockIndex: number, fenceIndex: number]
-}
-
-export interface GenuiFenceContext {
-  sessionId?: string
-  source?: GenuiFenceSource
-}
-
-export type GenuiFenceRenderer = (raw: string, key: Key, context?: GenuiFenceContext) => ReactNode
-
-/**
  * Keyed publisher for a settled `panel:true` fence: submits ONE panel
  * operation from the host-provided stable source (id + order), in an
  * effect — never inside the render function. StrictMode's duplicate effects
@@ -224,47 +203,30 @@ function diagnosePanelBudget(sessionId: string, sourceId: string): void {
   )
 }
 
-export const renderGenuiFence: GenuiFenceRenderer = (raw, key, context) => {
+export const renderGenuiFence: FenceRenderer = (raw, key, context) => {
   const parsed = parsePartialGenuiSpec(raw)
   const spec = parsed === null ? null : repairGenuiSpec(parsed)
   if (spec === null) return <FenceFallback key={key} fenceKey={key} raw={raw} />
   if (spec.panel === true) {
-    if (context !== undefined) {
-      // New host (fence-source contract): publish only with a settled stable
-      // source — streaming/identity-less renders keep the panel untouched.
-      // Appends additionally gate on a complete body (a settled-but-malformed
-      // append never merges partial content, matching the legacy path).
-      if (context.sessionId !== undefined && context.source !== undefined) {
-        if (spec.append === true && !isCompleteJson(raw)) return null
-        return (
-          <FencePanelPublisher
-            key={key}
-            sessionId={context.sessionId}
-            sourceId={context.source.id}
-            order={context.source.order}
-            spec={spec}
-          />
-        )
-      }
-      return null
-    }
-    // TRANSITIONAL old host (no fence context): keep the legacy publish path
-    // (active-session target + local fence key + fence-wins ordering). Removed
-    // once the host ships the fence-source contract.
-    const sessionId = getActiveSessionId()
-    if (sessionId !== null) {
-      if (spec.append === true) {
-        // Append merges INTO the existing panel (tabs by label, else tail).
-        // Gate on a complete body so streaming partial parses never
-        // double-merge; the operation map dedups by fence key.
-        if (isCompleteJson(raw)) publishPanelAppend(sessionId, spec, Number.MAX_SAFE_INTEGER, String(key))
-      } else {
-        publishPanelSpec(sessionId, spec)
-      }
+    // Publish only with a settled stable source — streaming/identity-less
+    // renders keep the panel untouched. Appends additionally gate on a
+    // complete body (a settled-but-malformed append never merges partial
+    // content).
+    if (context !== undefined && context.sessionId !== undefined && context.source !== undefined) {
+      if (spec.append === true && !isCompleteJson(raw)) return null
+      return (
+        <FencePanelPublisher
+          key={key}
+          sessionId={context.sessionId}
+          sourceId={context.source.id}
+          order={context.source.order}
+          spec={spec}
+        />
+      )
     }
     return null
   }
-  const sessionId = context?.sessionId ?? getActiveSessionId()
+  const sessionId = context?.sessionId
   return (
     // React key carries the stable source identity when present (atomic
     // remount at streaming→settled), falling back to the document key.
@@ -275,8 +237,9 @@ export const renderGenuiFence: GenuiFenceRenderer = (raw, key, context) => {
         // v2.7 durable state: session + stable source + content fingerprint —
         // replaying the same content restores answers/lock/field values; new
         // content (换题, edited spec) gets a fresh key. Without a stable
-        // source (streaming / old host) state is not persisted.
-        stateKey={sessionId === null || sessionId === undefined
+        // source (streaming / non-conversation surfaces) state is not
+        // persisted.
+        stateKey={sessionId === undefined
           ? undefined
           : fenceStateKey(sessionId, context?.source?.id ?? String(key), JSON.stringify(spec))}
       />
@@ -326,20 +289,7 @@ function sendPanelInstruction(ctx: Context, sessionId: SessionId, instruction: s
  * toolview for the render_ui tool, and the session panel dock; returning the
  * disposers lets cordis tear all registrations down on plugin unload. */
 export function apply(ctx: Context): () => void {
-  const disposers: Array<() => void> = [
-    // Cast through the old host's two-param FenceRenderer; removable once the
-    // host fence-source contract ships (the third argument is optional, so
-    // old hosts simply never pass it).
-    registerFenceRenderer('dsh-ui', renderGenuiFence as unknown as FenceRenderer),
-  ]
-  // Active-session feed: keeps the panel-target for panel-only fences
-  // (renderers run synchronously without a session-scoped component seat).
-  const syncActive = (): void => {
-    const info = ctx.sessions.currentProvideInfo.getSnapshot()
-    setActiveSessionId(info?.sessionId ?? null)
-  }
-  syncActive()
-  disposers.push(ctx.sessions.currentProvideInfo.subscribe(syncActive))
+  const disposers: Array<() => void> = [registerFenceRenderer('dsh-ui', renderGenuiFence)]
   // Keyed toolview: the harness dispatches 'tool.call.toolview' by wire tool
   // name; registering under 'render_ui' gives the tool's result card the
   // GenUI renderer (reading the repaired spec from result meta). The toolview
