@@ -8,7 +8,9 @@ import { defineConfig } from 'vitest/config'
  * against the same code the browser bundle compiles — no built lib/ copies.
  * Adjust DSH_ROOT if you develop against a different checkout.
  */
-const DSH_ROOT = resolve(__dirname, '../../.dsh/source/current')
+// CI 通过环境变量显式指定 DSH_ROOT（$GITHUB_WORKSPACE/../../.dsh/source/current 的
+// 规范化路径）；本地默认解析到宿主快照 checkout。
+const DSH_ROOT = process.env.DSH_ROOT ?? resolve(__dirname, '../../.dsh/source/current')
 
 const src = (p: string) => resolve(DSH_ROOT, p)
 

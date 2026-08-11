@@ -49,7 +49,8 @@ description: Render structured interactive UI inline in your reply via the dsh-u
 ### 交互
 **本地优先（v2.6）**：UI 自己能做的状态变化——判卷、判题、重置、展开、选中——一律本地即时完成，**零模型往返**。action 只用于必须模型参与的事（生成新内容、执行工具、下一步建议）。**交互组件必须带 action：不带 action 的按钮渲染为禁用态，用户点不了；带 action 的按钮点击后有「已响应」本地反馈。**
 - button: `{"type":"button","label":"...","tone":"primary|danger|success|ghost","full":true?,"small":true?,"icon":"emoji?","action":"refresh"?}`
-- input: `{"type":"input","label":"...","placeholder":"...","inputType":"text|email|password","value":"...","action":"name"?,"id":"field-id"?}` — action 在失焦**和回车**时触发（回车带 `submit:true`）；带 `id` 的值刷新后保留、并被 submit 收集进 `fields`
+- **秘密禁令**：不得索取或生成密码、API Key、访问令牌、恢复码等秘密输入；遇到此类需求直接拒绝并解释
+- input: `{"type":"input","label":"...","placeholder":"...","inputType":"text|email","value":"...","action":"name"?,"id":"field-id"?}` — action 在失焦**和回车**时触发（回车带 `submit:true`）；带 `id` 的值刷新后保留、并被 submit 收集进 `fields`
 - select: `{"type":"select","label":"...","options":["...","..."],"action":"pick"?}`
 - checkbox: `{"type":"checkbox","label":"...","checked":true?,"action":"toggle"?}`
 - radio: `{"type":"radio","label":"...","options":["...","..."],"selected":n?,"action":"pick"?}` — 单选；**加 `"group":"题目名"` 进入聚合模式**：选择只本地记录、不发往返；**加 `"answer":正确下标或标签` + `"explanation":"解析"` 后，交卷在本地判卷**

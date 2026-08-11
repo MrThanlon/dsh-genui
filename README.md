@@ -21,29 +21,19 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 
 ## ⚠️ 先看这里：dsh 版本要求（重要）
 
-本插件依赖 dsh 主仓的 **fence-registry 扩展点**（commit `47d230e`，2026-08-09 加入）。
+本插件依赖 dsh 客户端的 **fence-registry 扩展点**（2026-08-09 之后的内测构建加入）。
 
-在此之前的内测构建（包括 08-08 快照 `snapshots/20260808T121140Z`）**没有**该扩展点和 genui 相关 API，装上插件后会出现：
+更早的内测构建**没有**该扩展点和 genui 相关 API，装上插件后会出现：
 
 - `dsh-ui` fence 不渲染（插件装了也完全没反应）
 - 更早的构建在渲染时**整个聊天界面白屏**（渲染器调用了不存在的 API）
 
-**先更新 dsh，再装插件**：
+**先更新 dsh，再装插件**。更新后确认版本达标：
 
 ```sh
-# 方法一：在 dsh 源码目录里重新执行安装器（更新默认分支并重新构建）
-cd <dsh源码目录> && scripts/install.sh
-# 方法二：重新 clone 主仓后构建
-git clone <dsh仓库地址> && cd <dsh目录> && scripts/install.sh
-
-# 更新后确认版本达标（两条都过才说明版本没问题）：
-git -C <dsh源码> log -1 --oneline
-#   输出应 >= 47d230e（feat(genui): fence-registry extension point）
 grep -r registerFenceRenderer <dsh源码>/packages/client/ui-primitives/src/
 #   应有输出
 ```
-
-> 主仓默认分支已更新到含 fence-registry 的版本（旧快照保留在 tag `snapshot-20260808T121140Z-7f25d3e98c`），重新 clone 或 rerun 安装器即可拿到。
 
 ---
 
@@ -58,7 +48,7 @@ grep -r registerFenceRenderer <dsh源码>/packages/client/ui-primitives/src/
 
 前置条件，缺一不可：
 
-1. **dsh 是最新内测版**：需含 `fence-registry` 扩展点（commit ≥ `47d230e`，2026-08-09 之后）。**旧版（含 08-08 快照）装上会 fence 不渲染或聊天白屏**——先按上方「dsh 版本要求」更新 dsh 再装
+1. **dsh 是最新内测版**：需含 `fence-registry` 扩展点（2026-08-09 之后的内测构建）。旧版装上会 fence 不渲染或聊天白屏——先按上方「dsh 版本要求」更新 dsh 再装
 2. **`pnpm` 在 PATH 上**：`dsh plugin` 命令依赖它。没有就 `corepack enable`（或 `npm i -g pnpm`），然后**新开一个终端**，确认 `pnpm -v` 有输出
 3. **GitHub 已登录**：插件仓库在私有组织 `dsh-external`，需要 `gh auth login` 或已配置 git credential helper
 
@@ -104,11 +94,12 @@ dsh plugin --profile web add link:$PWD
 - **本地判卷（交卷）**：多道选择题 = 每题的 `radio` 加 `group` + `answer`（正确答案）+ `explanation`（解析），再加一个 `submit` 交卷按钮——用户全部选完点一次，**分数、每题对错、解析当场在 UI 里出现，零模型往返**；题目随即锁定，「重新作答」本地重置（可选 `resetAction` 通知模型）。题目没带答案时才退回聚合 action（`fields` 收集所有带 `id` 的输入）
 - **状态持久化**：答案、交卷锁定、输入值按「会话 + 内容指纹」自动保存——刷新页面/重开会话原样恢复，重渲染相同内容保留用户状态，新内容自动从头开始；上限 200 块 LRU 淘汰
 - **表单语义**：`input` 回车 / `textarea` Ctrl+Enter 即时提交（`submit:true`），不用等失焦；带 `id` 的字段值进 submit 的 `fields` 收集
+- **秘密禁令**：GenUI 不得索取密码、API Key、访问令牌、恢复码或其他秘密；密码输入即使出现也保持打码、不持久化、不进表单收集
 - **本地优先原则**：UI 自己能完成的状态变化（判卷、判题、重置、展开、选中）一律本地即时完成；action 只用于必须模型参与的事（生成新内容、执行工具、下一步建议）
-- **诚实交互**：交互组件必须带 `action`；不带 `action` 的按钮渲染为禁用态（消灭"看着能点、点了没反应"的假按钮）；带 `action` 的按钮点击后立即显示「已响应」本地反馈
+- **诚实交互**：交互组件必须带 `action`；不带 `action` 的按钮渲染为禁用态（消灭"看着能点、点了没反应"的假按钮）；带 `action` 的按钮点击后立即显示「已触发」本地反馈（只证明本地事件已触发，不代表模型已收到）
 - **事件循环**：按钮/开关/输入/下拉/复选/单选/文本域/测验带 `action`，点击/失焦回传模型，模型更新界面；同名 action 300ms 尾沿防抖，连点合并为一次（最后一次的值生效）
 - **工具通道**：`render_ui` 工具把同一份 spec 渲染成工具行卡片（交付物型 UI 走工具、回答型 UI 走围栏）
-- **会话面板**：composer 上方常驻 dock，`render_ui` / `panel: true` 围栏原地更新同一块界面；`/panel` 命令客户端直开（`/panel <指令>` 转模型定制、`/panel clear` 清空）；顶边框可拖拽调高；`append: true` 增量合并——同名标签页追加内容、新标签页新增，面板可无限长大，不受单条消息大小限制
+- **会话面板**：composer 上方常驻 dock，`render_ui` / `panel: true` 围栏原地更新同一块界面；`/panel` 命令客户端直开（`/panel <指令>` 转模型定制、`/panel clear` 清空）；顶边框可拖拽调高；`append: true` 增量合并——同名标签页追加内容、新标签页新增；整面板默认最多 200 节点 / 200 条追加，达到上限后模型应发送 `replace` 重建
 - **自愈与上限**：每个围栏过规格守卫——坏节点静默丢弃、数值钳位、字符串截断，整树 ≤200 节点 / 8 层嵌套，病态 spec 不会拖垮界面
 - **图错误自愈**：mermaid 渲染失败自动修复重试（剥反引号、引号化中文/空格标签、去 `<br/>`），仍失败才降级源码；错误图永不直接上屏
 - **可访问性**：tabs/折叠/开关/进度条带完整 ARIA 与键盘导航（方向键切页、Home/End 跳转）
@@ -136,10 +127,10 @@ dsh plugin --profile web add link:$PWD
 ## ❓ 常见问题
 
 - **显示成代码块？** 查三处：dsh 版本带 fence-registry（见顶部「版本要求」，旧版会不渲染）、`dsh plugin --profile web list` 里有本插件、重启 + 硬刷新。
-- **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧（< 47d230e）——先更新 dsh 再重装插件，见顶部「版本要求」。
+- **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧——先更新 dsh 再重装插件，见顶部「版本要求」。
 - **`dsh: pnpm not found on PATH`？** 装 pnpm 后**新开终端**再试（`corepack enable` 或 `npm i -g pnpm`）。
 - **安装时卡在 git 凭据/404？** 仓库在私有组织，先 `gh auth login`，再用 git URL 方式安装。
-- **装了但 scene3d/mermaid 不渲染？** 多半是用 `link:` 装的干净 clone，依赖没进去——卸掉改用 git URL 方式重装（`dsh plugin --profile web remove @deepseek-ai/dsh-genui` 后再 add）。
+- **装了但 scene3d/mermaid 不渲染？** 渲染器与图表引擎已内联进 client.js，无需额外依赖——先重启 dsh web + 硬刷新（Cmd+Shift+R）；仍不渲染就卸掉重装（`dsh plugin --profile web remove @deepseek-ai/dsh-genui` 后再 add）。
 - **模型不主动输出？** 重启后新会话生效；或直接说"用 dsh-ui 输出"。
 - **clone 后没有 lib/？** `pnpm install && pnpm run check` 自己构建。
 
@@ -147,7 +138,7 @@ dsh plugin --profile web add link:$PWD
 
 ```sh
 pnpm install
-pnpm run check   # 类型检查 + 135 测试 + 构建
+pnpm run check   # 类型检查 + 全量测试 + 构建
 ```
 
 ### 真机 e2e

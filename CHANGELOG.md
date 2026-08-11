@@ -1,17 +1,41 @@
+# Changelog
+
+## [Unreleased]
+### 新增
+- 面板操作模型：每个来源（围栏/工具结果）带稳定身份与三段顺序进入会话级操作表——不同消息即使局部 key 相同也各追加一次；重放/StrictMode 幂等；乱序到达按真实顺序折叠；`/panel` 变为本地覆盖（默认面板或清空 + 屏障），旧历史重放无法复活面板
+- 面板规模边界：整面板默认最多 200 节点 / 200 条追加（可注入调整），超限以 replace 恢复并给出诊断
+- 面板、工具卡与内联 UI 的持久化身份改为「会话 + 稳定来源 + 内容指纹」，新内容不再继承旧状态
+- 输入法保护：input 回车 / textarea Ctrl/Cmd+Enter 带三层组合态判定（composition ref + 10ms 延迟 + isComposing/229），选词回车不再误提交
+- 单次前向扫描的 partial 解析：病态输入从秒级降为毫秒级，解析尝试有界
+- scene3d 改为事件驱动渲染：静止零动画帧，拖拽/滚轮才重绘；拖拽走 pointer capture
+- 确定构建：CSS 类名固定排序 + 关闭 sourcemap，同源码重复构建产物 SHA 一致；tsdown 直接从 src 构建、tsc 只产声明
+- 安装脚本文件安全边界：skill 同步按目标六类状态处理（原子替换/同文件链接跳过/异文件与悬空链接安全失败），profile 参数校验，路径经环境变量传递
+
+### 修改
+- 表单：tabs 内 grouped radio/字段/submit 与根层行为一致；答案状态简化为纯字符串表；空字段离开共享注册表、默认值挂载即注册、submit 统一按已填字段计算
+- 按钮本地反馈文案由「已响应」改为「已触发」（只证明本地事件触发）
+- 依赖归类：图表/3D 引擎（已内联）与 react-dom 移入 devDependencies，安装不再额外下载
+- 发布包白名单：不再包含 src/、sourcemap 与中间 JS（压缩约 1.7 MB、解包约 8.7 MB），并新增 `scripts/verify-pack.mjs` 门禁
+
+### 修复
+- 面板追加 A→B→A 重放不再重复合并；同消息两个围栏按文本块/围栏顺序折叠而非 effect 顺序
+- 同一超限来源只产生一次诊断
+- 面板拖拽/3D 不再注册 window 级指针监听，卸载无残留
+- 安装脚本在插件 checkout 内运行时不再解析到自身（node self-reference）
+
+### 安全
+- 密码输入保持打码渲染，但值不持久化、不进 submit 收集，刷新即清空；教学面禁止索取密码、API Key、访问令牌、恢复码等秘密
+
 ## [0.3.5] - 2026-08-12
 
 ### 兼容（适配 0811 快照）
 - **cordis 改名迁移**：0811 快照把 `cordis` 包重命名为 `@deepseek-ai/cordis`（4.0.1-rc.1）。插件全部 4 处 import、peerDependencies、tsconfig paths、tsdown EXTERNALS、vitest alias 同步迁移——host 侧 `Context` 现在与核心同源，避免双 cordis 实例导致的注入器不匹配
 - 验证：tsc + 208 测试 + tsdown 全绿（测试直接 alias 到 0811 的 vendor/cordis 与 ui-primitives 源码），主 GUI（0811）已加载重建 bundle
 
-# Changelog
-
 ## [0.3.4] - 2026-08-11
 
 ### 新增
 - **fence 解析失败诊断条（根治静默退化）**：`dsh-ui` 围栏在消息结束后仍无法解析为 JSON 时，渲染器显示「⚠️ dsh-ui fence JSON 解析失败（含位置）」红色诊断条，原始内容保留在下方代码块——作者一眼可见缺陷，不再无声变成代码块；流式输出中的 partial JSON 不误报（按宿主 `[data-streaming]` 标记判定已结束）
-
-# Changelog
 
 ## [0.3.3] - 2026-08-11
 
