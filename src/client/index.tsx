@@ -16,7 +16,7 @@
  * @module @deepseek-ai/dsh-genui/client
  */
 
-import type { Context } from 'cordis'
+import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'

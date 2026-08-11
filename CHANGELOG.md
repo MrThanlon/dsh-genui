@@ -1,3 +1,11 @@
+## [0.3.5] - 2026-08-12
+
+### 兼容（适配 0811 快照）
+- **cordis 改名迁移**：0811 快照把 `cordis` 包重命名为 `@deepseek-ai/cordis`（4.0.1-rc.1）。插件全部 4 处 import、peerDependencies、tsconfig paths、tsdown EXTERNALS、vitest alias 同步迁移——host 侧 `Context` 现在与核心同源，避免双 cordis 实例导致的注入器不匹配
+- 验证：tsc + 208 测试 + tsdown 全绿（测试直接 alias 到 0811 的 vendor/cordis 与 ui-primitives 源码），主 GUI（0811）已加载重建 bundle
+
+# Changelog
+
 ## [0.3.4] - 2026-08-11
 
 ### 新增

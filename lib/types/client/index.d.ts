@@ -15,7 +15,7 @@
  * markdown host (fences) or by the panel component (dock).
  * @module @deepseek-ai/dsh-genui/client
  */
-import type { Context } from 'cordis';
+import type { Context } from '@deepseek-ai/cordis';
 import { type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives';
 export declare const renderGenuiFence: FenceRenderer;
 /** Cordis client entry: register the fence renderer on boot, the keyed

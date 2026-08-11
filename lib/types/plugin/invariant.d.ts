@@ -2,7 +2,7 @@
  * Package-owned invariant companion for `@deepseek-ai/dsh-genui`.
  * @module @deepseek-ai/dsh-genui/invariant
  */
-import type { Context } from 'cordis';
+import type { Context } from '@deepseek-ai/cordis';
 /** Cordis companion plugin name. */
 export declare const name = "genui-invariant";
 /** Service required before the companion can reserve package ownership. */

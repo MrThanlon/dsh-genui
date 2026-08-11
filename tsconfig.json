@@ -66,7 +66,7 @@
       "@deepseek-ai/dsh-client-locale/client": [
         "../../.dsh/source/current/packages/client/locale/lib/types/client/index.d.ts"
       ],
-      "cordis": [
+      "@deepseek-ai/cordis": [
         "../../.dsh/source/current/vendor/cordis/lib/types/index.d.ts"
       ],
       "cosmokit": [

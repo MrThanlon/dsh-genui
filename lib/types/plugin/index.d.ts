@@ -9,7 +9,7 @@
  * guidance so the model sees it among its output-format rules.
  * @module @deepseek-ai/dsh-genui
  */
-import { Context } from 'cordis';
+import { Context } from '@deepseek-ai/cordis';
 /** Convention: tool guidance uses 100–199; bash's section is 104. */
 export declare const GENUI_SECTION_ORDER = 105;
 /** The fence language description injected into every assembled system prompt. */

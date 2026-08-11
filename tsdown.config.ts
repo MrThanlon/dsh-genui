@@ -21,7 +21,7 @@ const ID = '@deepseek-ai/dsh-genui'
 /** Module-table entries this bundle may leave external: platform seed rows
  * (react family, cordis, ui-primitives) answered by the loader's require. */
 const EXTERNALS = [
-  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', 'cordis',
+  'react', 'react/jsx-runtime', 'react-dom', 'react-dom/client', '@deepseek-ai/cordis',
   '@deepseek-ai/dsh-client-ui-primitives',
 ]
 

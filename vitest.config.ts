@@ -23,7 +23,7 @@ export default defineConfig({
       { find: /^@deepseek-ai\/dsh-client-ui-primitives$/, replacement: src('packages/client/ui-primitives/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-system-prompt$/, replacement: src('packages/core/system-prompt/src/index.ts') },
       { find: /^@deepseek-ai\/dsh-invariants$/, replacement: src('packages/support/invariants/src/index.ts') },
-      { find: /^cordis$/, replacement: src('vendor/cordis/src/index.ts') },
+      { find: /^@deepseek-ai\/cordis$/, replacement: src('vendor/cordis/src/index.ts') },
       { find: /^cosmokit$/, replacement: src('vendor/cosmokit/src/index.ts') },
     ],
   },
