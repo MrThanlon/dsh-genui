@@ -4,16 +4,27 @@
  * Stock DSH renders every fenced code block through the shared CodeBlock
  * surface (stable class `md-code-block`, language label rendered as the
  * banner's childless label div). This channel observes the conversation DOM,
- * finds settled blocks labelled `dsh-ui`, parses the raw fence body and
- * mounts the plugin's own React tree next to the (hidden) stock block:
+ * finds blocks labelled `dsh-ui`, parses the raw fence body and mounts the
+ * plugin's own React tree next to the (hidden) stock block:
  *
- * - The stock block stays in the DOM (hidden), so streaming updates keep
- *   flowing through it; rendering is gated on the settled marker
- *   (`[data-streaming]` absent — the same marker the annotation plugin
- *   consumes), so partial JSON never renders prematurely.
+ * - **Streaming takeover**: the channel takes over a dsh-ui block as soon as
+ *   ONE finished component parses (the partial parser), and re-renders the
+ *   root as the body grows — the UI assembles top-down while the reply
+ *   streams, no settled marker required. A body with no finished component
+ *   yet stays a stock code block (partial JSON must never look broken).
+ * - **Pre-paint surgery repair**: the host's React re-renders during
+ *   streaming can wipe our foreign container or reset the hide. A repair
+ *   pass in the MutationObserver microtask re-applies the surgery before
+ *   paint (same pattern the annotation plugin proved on this host), and the
+ *   1s sweep is the backstop.
+ * - **Settled transition**: when `[data-streaming]` leaves the row, the
+ *   mount re-renders with the stable source identity — the moment panels
+ *   publish and durable state keys in (mirrors the registry channel's
+ *   settled-source semantics; streaming renders are identity-less).
  * - Stable identity: the owning row's `data-chat-anchor-key` (session-stable,
- *   seq-derived) + the fence's ordinal among dsh-ui blocks in that row.
- *   `sourceId = dom:<anchor>:<ordinal>` feeds panel dedup and durable state.
+ *   seq-derived) + the fence's ordinal among settled dsh-ui blocks in that
+ *   row. `sourceId = dom:<anchor>:<ordinal>` feeds panel dedup and durable
+ *   state.
  * - Actions ride the plugin-owned GenuiActionContext provider: every tree
  *   this channel mounts is wrapped with a handler that relays
  *   `[genui-action]` through the scoped conversation send — no host plumbing.
@@ -48,6 +59,7 @@ interface Mount {
   container: HTMLElement
   block: HTMLElement
   lastRaw: string
+  lastSettled: boolean
 }
 
 function isTextNode(node: Node): node is Text {
@@ -86,7 +98,9 @@ function rowOf(block: Element): Element | null {
   return block.closest('[data-chat-anchor-key]')
 }
 
-/** 1-based ordinal of this block among the row's dsh-ui blocks (document order). */
+/** 1-based ordinal of this block among the row's settled dsh-ui blocks
+ * (document order). Streaming candidates are skipped, so the ordinal stays
+ * stable while the block itself is still streaming. */
 function fenceIndexOf(row: Element, block: Element): number {
   let index = 0
   for (const candidate of row.querySelectorAll(CODE_BLOCK)) {
@@ -137,6 +151,21 @@ export function installDomFenceRenderer(
     }
   }
 
+  /** Render context for a block: session always; the stable source identity
+   * only once settled — streaming renders are identity-less (no panel
+   * publish, no durable state), mirroring the registry channel. */
+  function contextOf(row: Element, block: Element, settled: boolean): { key: Key; context: GenuiFenceContext } {
+    const fenceIndex = fenceIndexOf(row, block)
+    const anchorKey = row.getAttribute('data-chat-anchor-key') ?? 'unknown'
+    const key = `dom:${anchorKey}:${fenceIndex}` as Key
+    const sessionId = sessionIdOf()
+    const context: GenuiFenceContext = {
+      ...(sessionId === undefined ? {} : { sessionId }),
+      ...(settled ? { source: { id: key as string, order: [anchorSeqOf(row), 0, fenceIndex] as const } } : {}),
+    }
+    return { key, context }
+  }
+
   function unmountBlock(block: HTMLElement): void {
     const mount = mounts.get(block)
     if (mount === undefined) return
@@ -149,25 +178,17 @@ export function installDomFenceRenderer(
 
   function renderBlock(block: HTMLElement): void {
     if (block.hasAttribute(PROCESSED)) return
-    if (!isSettled(block)) return
     if (infostringOf(block) === null) return
     const row = rowOf(block)
     if (row === null) return
     const raw = rawOf(block)
     if (raw.trim() === '') return
-    const sessionId = sessionIdOf()
-    const fenceIndex = fenceIndexOf(row, block)
-    const anchorKey = row.getAttribute('data-chat-anchor-key') ?? 'unknown'
-    const source: GenuiFenceContext['source'] = {
-      id: `dom:${anchorKey}:${fenceIndex}`,
-      order: [anchorSeqOf(row), 0, fenceIndex],
-    }
-    const context: GenuiFenceContext = {
-      ...(sessionId === undefined ? {} : { sessionId }),
-      source,
-    }
-    const node: ReactNode | null = renderResolvedFenceNode(raw, `dom:${anchorKey}:${fenceIndex}` as Key, context)
-    if (node === null) return // unrepairable: the stock code block stays visible
+    const settled = isSettled(block)
+    const { key, context } = contextOf(row, block, settled)
+    const node: ReactNode | null = renderResolvedFenceNode(raw, key, context)
+    // Null = no finished component yet (streaming half) or unrepairable:
+    // the stock code block stays visible until something renders.
+    if (node === null) return
     const container = document.createElement('div')
     container.className = CONTAINER_CLASS
     block.style.display = 'none'
@@ -180,41 +201,55 @@ export function installDomFenceRenderer(
       sendAction(sid, action, payload)
     }
     root.render(<GenuiActionContext.Provider value={handler}>{node}</GenuiActionContext.Provider>)
-    mounts.set(block, { root, container, block, lastRaw: raw })
+    mounts.set(block, { root, container, block, lastRaw: raw, lastSettled: settled })
   }
 
-  /** Sweep: drop dead mounts, then take over every newly-settled dsh-ui block. */
+  /** Pre-paint repair: the host's React re-renders during streaming can wipe
+   * our foreign container or reset the hide. Re-apply the surgery in the
+   * observer microtask (before paint) so raw JSON never flashes between
+   * chunks; the rAF sweep re-renders React state at its own pace. */
+  function repairSurgery(): void {
+    for (const mount of mounts.values()) {
+      const block = mount.block
+      if (!block.isConnected) continue
+      if (block.style.display !== 'none') block.style.display = 'none'
+      if (!block.hasAttribute(PROCESSED)) block.setAttribute(PROCESSED, '')
+      if (mount.container.parentElement !== block.parentElement
+          || mount.container.previousElementSibling !== block) {
+        block.after(mount.container)
+      }
+    }
+  }
+
+  /** Sweep: drop dead mounts, re-render changed bodies (streaming growth and
+   * the streaming→settled transition), repair surgery, then take over every
+   * new dsh-ui block — settled or still streaming. */
   function sweep(): void {
     for (const [block, mount] of mounts) {
-      if (!block.isConnected) unmountBlock(block)
-      else if (mount.lastRaw !== rawOf(block)) {
-        // Settled content changed (rare: repaired render or host re-render).
-        // Re-render in place with the same stable source identity.
+      if (!block.isConnected) {
+        unmountBlock(block)
+        continue
+      }
+      const raw = rawOf(block)
+      const settled = isSettled(block)
+      if (mount.lastRaw !== raw || mount.lastSettled !== settled) {
         const row = rowOf(block)
-        const sessionId = sessionIdOf()
-        const fenceIndex = fenceIndexOf(row ?? block.parentElement ?? block, block)
-        const anchorKey = row?.getAttribute('data-chat-anchor-key') ?? 'unknown'
-        const raw = rawOf(block)
-        const source: GenuiFenceContext['source'] = {
-          id: `dom:${anchorKey}:${fenceIndex}`,
-          order: [anchorSeqOf(row ?? block), 0, fenceIndex],
-        }
-        const context: GenuiFenceContext = {
-          ...(sessionId === undefined ? {} : { sessionId }),
-          source,
-        }
-        const node = renderResolvedFenceNode(raw, `dom:${anchorKey}:${fenceIndex}` as Key, context)
+        const anchor = row ?? block.parentElement ?? block
+        const { key, context } = contextOf(anchor, block, settled)
+        const node = renderResolvedFenceNode(raw, key, context)
         if (node === null) {
           unmountBlock(block)
-          return
+          continue
         }
         mount.lastRaw = raw
+        mount.lastSettled = settled
         mount.root.render(<GenuiActionContext.Provider value={(action, payload) => {
           const sid = sessionIdOf()
           if (sid !== undefined) sendAction(sid, action, payload)
         }}>{node}</GenuiActionContext.Provider>)
       }
     }
+    repairSurgery()
     for (const block of Array.from(document.querySelectorAll<HTMLElement>(CODE_BLOCK))) {
       renderBlock(block)
     }
@@ -230,12 +265,20 @@ export function installDomFenceRenderer(
     })
   }
 
-  const observer = new MutationObserver(() => schedule())
+  const observer = new MutationObserver(() => {
+    // Pre-paint pass: surgery repair only (cheap DOM ops); the React
+    // re-render goes through the rAF-scheduled sweep.
+    repairSurgery()
+    schedule()
+  })
   observer.observe(document.body, {
     childList: true,
     subtree: true,
     attributes: true,
     attributeFilter: ['data-streaming'],
+    // React streams tokens as text-node updates: without characterData the
+    // observer would only fire on structural changes and miss body growth.
+    characterData: true,
   })
   const interval = window.setInterval(sweep, SWEEP_MS)
   sweep()

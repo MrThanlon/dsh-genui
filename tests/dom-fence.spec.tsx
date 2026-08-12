@@ -100,9 +100,33 @@ describe('installDomFenceRenderer', () => {
     }
   })
 
-  it('waits for the settled marker (data-streaming) before mounting', async () => {
+  it('mounts while streaming once a component parses, and re-renders as the body grows', async () => {
     const row = assistantRow('s9', true)
-    const block = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    const block = stockCodeBlock('{"items":[{"type":"text","content":"你好，世界"},{"type":"te', 'dsh-ui')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-1', send), send)
+    try {
+      await tick()
+      // Taken over during streaming: the first finished component renders.
+      expect(block.hasAttribute('data-genui-rendered')).toBe(true)
+      expect(block.style.display).toBe('none')
+      const container = row.querySelector('.genui-dom-fence')
+      expect(container).not.toBeNull()
+      expect(container!.textContent).toContain('你好，世界')
+      // The body grows: the second finished component appears without settle.
+      block.querySelector('code')!.textContent = '{"items":[{"type":"text","content":"你好，世界"},{"type":"text","content":"第二块"}]}'
+      await tick()
+      expect(row.querySelector('.genui-dom-fence')?.textContent).toContain('第二块')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('keeps the stock block visible while no component has finished (streaming half)', async () => {
+    const row = assistantRow('s9b', true)
+    const block = stockCodeBlock('{"items":[{"type":"text","content":', 'dsh-ui')
     row.appendChild(block)
     document.body.appendChild(row)
     const send = vi.fn()
@@ -110,10 +134,61 @@ describe('installDomFenceRenderer', () => {
     try {
       await tick()
       expect(block.hasAttribute('data-genui-rendered')).toBe(false)
-      row.removeAttribute('data-streaming')
+      expect(block.style.display).toBe('')
+      expect(row.querySelector('.genui-dom-fence')).toBeNull()
+      // The component closes: takeover happens while still streaming.
+      block.querySelector('code')!.textContent = '{"items":[{"type":"text","content":"你好，世界"}]}'
       await tick()
       expect(block.hasAttribute('data-genui-rendered')).toBe(true)
-      expect(row.querySelector('.genui-dom-fence')).not.toBeNull()
+      expect(row.querySelector('.genui-dom-fence')?.textContent).toContain('你好，世界')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('publishes a streaming panel:true fence only after the reply settles', async () => {
+    const row = assistantRow('s9c', true)
+    const block = stockCodeBlock('{"panel":true,"title":"面板A","items":[{"type":"text","content":"A"}]', 'dsh-ui')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-1', send), send)
+    try {
+      await tick()
+      // Streaming: the block is taken over (hidden, empty root) but the
+      // panel store stays untouched — identity-less renders never publish.
+      expect(block.hasAttribute('data-genui-rendered')).toBe(true)
+      expect(block.style.display).toBe('none')
+      expect(row.querySelector('.genui-dom-fence')?.textContent).toBe('')
+      expect(getPanelSpec('sess-1')).toBeNull()
+      // Settle: the mount re-renders with the stable source → publish once.
+      row.removeAttribute('data-streaming')
+      await tick()
+      expect(getPanelSpec('sess-1')?.title).toBe('面板A')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('re-applies the surgery when a host re-render wipes the container', async () => {
+    const row = assistantRow('s9d', true)
+    const block = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-1', send), send)
+    try {
+      await tick()
+      const container = row.querySelector<HTMLElement>('.genui-dom-fence')
+      expect(container).not.toBeNull()
+      // Simulate a host React re-render dropping the foreign node and
+      // resetting the hide during streaming.
+      container!.remove()
+      block.style.display = ''
+      await tick()
+      expect(container!.isConnected).toBe(true)
+      expect(container!.previousElementSibling).toBe(block)
+      expect(block.style.display).toBe('none')
     } finally {
       dispose()
     }
