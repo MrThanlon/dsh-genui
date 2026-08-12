@@ -10,7 +10,9 @@
 //    delivery (no more empty focus-in/focus-out round trips).
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { GenuiActionContext, registerGenuiComponent } from '@deepseek-ai/dsh-client-ui-primitives'
+import { registerGenuiComponent } from './host-registry.ts'
+import { hasFenceRegistry } from './setup'
+import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GenuiBlock, GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { repairGenuiSpec } from '../src/client/guard.ts'
 
@@ -30,7 +32,7 @@ function renderBlock(spec: unknown, actions: Array<[string, Record<string, unkno
   )
 }
 
-describe('v2.8: memo comparator (streaming re-parse skips unchanged renders)', () => {
+describe.skipIf(!hasFenceRegistry)('v2.8: memo comparator (streaming re-parse skips unchanged renders)', () => {
   it('does not re-render when an equal-but-fresh spec object arrives', () => {
     let renders = 0
     const dispose = registerGenuiComponent('probe', ({ node }: { node: { label?: string } }) => {

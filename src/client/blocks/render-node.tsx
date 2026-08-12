@@ -4,8 +4,8 @@
  * the sibling block modules. Depth-guarded against pathological specs.
  * @module @deepseek-ai/dsh-genui/client/blocks/render-node
  */
-import { type ReactNode } from 'react'
-import { getGenuiComponent, type GenuiCustomNode } from '@deepseek-ai/dsh-client-ui-primitives'
+import { type ReactNode, type ComponentType } from 'react'
+import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
 import css from '../GenuiBlock.module.css'
 import { GENUI_LIMITS } from '../guard.ts'
 import type { GenuiNode } from '../spec.ts'
@@ -19,6 +19,25 @@ import {
   AccordionNode, BreadcrumbNode, CalloutNode, CodeNode, CopyNode, DiffNode, FileTreeNode, JsonNode, KeyValueNode,
   MermaidNode, PlotNode, QuizNode, Scene3DNode, StepsNode, TabsNode, TimelineNode,
 } from './advanced.tsx'
+
+/** Custom node data shape (declared locally: pristine hosts export no type). */
+interface GenuiCustomNode {
+  type: string
+  [key: string]: unknown
+}
+
+/** Props a registered custom renderer receives. */
+interface GenuiCustomProps {
+  node: GenuiCustomNode
+  onAction?: GenuiBlockProps['onAction']
+  renderChildren: (nodes: unknown[], keyBase: string) => unknown
+}
+
+/** Custom-component registry lookup, feature-detected (contract hosts only). */
+type HostGenuiExt = {
+  getGenuiComponent?: (type: string) => ComponentType<GenuiCustomProps> | undefined
+}
+const getGenuiComponent = (primitives as unknown as HostGenuiExt).getGenuiComponent
 
 export function renderNode(
   node: GenuiNode,
@@ -210,7 +229,7 @@ export function renderNode(
       // spec union is exhaustive, so an unknown node arrives as a plugin
       // extension — treat it as a generic data node.
       const custom = node as unknown as GenuiCustomNode
-      const Custom = getGenuiComponent(custom.type)
+      const Custom = getGenuiComponent?.(custom.type)
       if (Custom !== undefined) {
         return (
           <Custom

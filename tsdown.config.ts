@@ -18,9 +18,10 @@ const ID = '@deepseek-ai/dsh-genui'
 
 /** Module-table entries this bundle may leave external: platform seed rows
  * (react family, cordis, ui-primitives) answered by the loader's require.
- * `react-dom` is deliberately absent — the client half never imports it. */
+ * `react-dom/client` joins the list for the DOM render channel (pure-plugin
+ * fence rendering on pristine hosts mounts its own React roots). */
 const EXTERNALS = [
-  'react', 'react/jsx-runtime', '@deepseek-ai/cordis', '@deepseek-ai/dsh-client-ui-primitives',
+  'react', 'react/jsx-runtime', 'react-dom/client', '@deepseek-ai/cordis', '@deepseek-ai/dsh-client-ui-primitives',
 ]
 
 const CSS_VIRTUAL_PREFIX = '\0dsh-css:'

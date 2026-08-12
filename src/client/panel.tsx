@@ -25,7 +25,7 @@
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
-import { GenuiActionContext, type GenuiActionHandler } from '@deepseek-ai/dsh-client-ui-primitives'
+import { GenuiActionContext, type GenuiActionHandler } from './action-context.ts'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'

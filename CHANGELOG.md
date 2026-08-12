@@ -1,9 +1,24 @@
 # Changelog
 
+## [0.7.2] - 2026-08-13
+### 新增
+- **DOM 渲染通道（纯插件化）**：fence 渲染改为双模——宿主提供 fence-registry 扩展点（契约线）时走原 registry 通道；原版 DSH（无扩展点）时启用 DOM 观察通道：MutationObserver 盯会话内 `.md-code-block`（稳定类名），`[data-streaming]` 落定后按语言标签找到 `dsh-ui` 围栏，解析 JSON 并以插件自有 React 根挂载同一套渲染管线（react-dom/client 平台模块）；原始代码块隐藏保留以承接流式更新，卸载/分支切换自动还原。**零宿主代码改动：原版快照 + 本插件即可用**，同时兼容契约线宿主（自动探测选择）
+- **动作上下文插件本地化**：`GenuiActionContext`/`useGenuiAction` 不再依赖宿主导出（原版无此导出）——宿主提供时沿用宿主上下文实例（MarkdownText 注入的 sendGenuiAction 无缝到达），否则回退插件本地上下文；DOM 通道以 `ctx.sessions.scope().get('conversation').send()` 转发 `[genui-action]`（与宿主版消息模板逐字一致）
+- **DOM 通道稳定身份**：sourceId = `dom:<data-chat-anchor-key>:<围栏序数>`，order 取锚点键数字段（缺省按行序），面板去重与 durable state 键在无宿主 context 时依旧稳定
+### 修改
+- fence 渲染管线抽到 `src/client/fence-render.tsx`（registry 与 DOM 两通道共用）；renderGenuiFence 语义不变（不可修复体仍渲染 FenceFallback）
+- tsdown externals 增加 `react-dom/client`（平台模块表已有，零体积）
+- vitest 别名修正 `dsh-invariants` → `packages/runtime-diagnostics/invariants`（0812-final 线路径）
+### 测试
+- 350 全绿（+8 DOM 通道：挂载/语言过滤/落定门控/坏体保块/动作转发(300ms 防抖)/panel 发布/卸载还原/无会话渲染）；registry 通道测试经 setup 特征门控在两条宿主线上均可运行
+
+
 ## [0.7.1] - 2026-08-13
 ### 修改
 - **适配 0812 宿主契约线**：/panel 斜杠命令源从 `ctx.slash`（ui-slash，0812 线上已移除）迁到 `ctx.inputTriggers`（ui-input-trigger 的 `InputTriggerSource`：candidates(session, req) / onPick(pick) / matchEnter(session, line, signal) / submit(args, actx)）；client inject 同步改为 `['slots','sessions','inputTriggers']`
 - **tsconfig 宿主类型路径**：`dsh-invariants` → `packages/runtime-diagnostics/invariants`，ui-slash 类型路径 → `packages/client/ui-input-trigger`
+
+### 修复
 
 
 ## [0.7.0] - 2026-08-13

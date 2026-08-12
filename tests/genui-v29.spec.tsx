@@ -8,7 +8,7 @@
 // 5) asset prefetch links injected at boot.
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { GenuiActionContext } from '@deepseek-ai/dsh-client-ui-primitives'
+import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GenuiBlock, GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 import { repairGenuiSpec } from '../src/client/guard.ts'
 

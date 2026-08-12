@@ -1,18 +1,23 @@
 /**
- * dsh-genui browser half: registers the `dsh-ui` fence renderer with
- * MarkdownText via the fence-registry extension point shipped by
- * `@deepseek-ai/dsh-client-ui-primitives`, the keyed toolview for the
- * `render_ui` tool (renders the tool's result card in the tool row), and the
- * session panel dock (re-renders the latest render_ui spec IN PLACE above
- * the composer, so repeated calls update one surface instead of stacking).
+ * dsh-genui browser half: the ```dsh-ui fence renderer, the keyed toolview
+ * for the `render_ui` tool, and the session panel dock.
+ *
+ * Fence rendering is dual-mode, chosen at boot:
+ * - **Registry channel** (contract hosts): the host's MarkdownText resolves
+ *   ```dsh-ui fences through the fence-registry extension point; this package
+ *   registers `renderGenuiFence`. Action callbacks ride the host-installed
+ *   GenuiActionContext.
+ * - **DOM channel** (pristine hosts): no extension point exists, so
+ *   `dom-fence.ts` observes the conversation DOM, finds settled stock code
+ *   blocks labelled `dsh-ui`, and mounts the same render pipeline in its own
+ *   React roots — wrapped in the plugin-owned GenuiActionContext that relays
+ *   `[genui-action]` through the scoped conversation send. Either way the
+ *   deployment is the STOCK DSH snapshot plus this plugin.
  *
  * The renderer parses the fence body with the partial parser: while the reply
  * streams, every FINISHED component appears the moment its JSON object
  * closes, so the UI assembles top-down before the fence (or reply) completes.
- * A body with no finished component yet falls back to a plain code block,
- * re-evaluated per chunk. Action callbacks (v2 event loop) are not threaded
- * here — GenuiBlock reads them from GenuiActionContext, installed by the
- * markdown host (fences) or by the panel component (dock).
+ * A body with no finished component yet falls back to a plain code block.
  * @module @deepseek-ai/dsh-genui/client
  */
 
@@ -20,21 +25,20 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { IConversation } from '@deepseek-ai/dsh-client-ui-conversation/client'
-import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type Key } from 'react'
-import { CodeBlock, registerFenceRenderer, type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives'
-import { ErrorBoundary } from './ErrorBoundary.tsx'
-import { GenuiBlock } from './GenuiBlock.tsx'
-import { repairGenuiSpec } from './guard.ts'
-import { fenceStateKey } from './interaction-store.ts'
-import { parsePartialGenuiSpec } from './parse-partial.ts'
+import type { Key, ReactNode } from 'react'
+import * as primitives from '@deepseek-ai/dsh-client-ui-primitives'
+import { installDomFenceRenderer } from './dom-fence.tsx'
+import { renderGenuiFence, type GenuiFenceContext } from './fence-render.tsx'
 import { createPanelSlashSource } from './panel-command.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
-import { applyPanelOperation, diagnosePanelBudget, type PanelOperationStatus } from './panel-store.ts'
 import { GenuiToolView } from './toolview.tsx'
-import type { GenuiSpec } from './spec.ts'
 import type { InputTriggerServiceContract } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
-import { completeFenceJson, describeJsonFailure, isCompleteJson, repairFenceJson } from '../shared/fence-repair.ts'
 import { assetUrl } from './asset-loader.ts'
+
+/** Host extension surface the registry channel needs (absent on pristine). */
+type HostFenceExt = {
+  registerFenceRenderer?: (lang: string, renderer: (raw: string, key: Key, context?: GenuiFenceContext) => ReactNode) => () => void
+}
 
 /** Add low-priority prefetch links for the lazy engine assets (mermaid/three).
  * Browser-dependent: some engines ignore `<link rel=prefetch>`; harmless
@@ -50,163 +54,6 @@ export function prefetchGenuiAssets(): void {
     link.href = assetUrl(file)
     document.head.appendChild(link)
   }
-}
-
-/** Render a ```dsh-ui fence body as interactive components. While the body
- * still has no finished component (fence open / malformed) the renderer falls
- * back to a plain code block, re-evaluated per chunk — matching the markdown
- * renderer's settled contract. Every accepted body runs through the spec
- * guard (limits + deterministic repair) so pathological or hostile specs
- * degrade gracefully instead of stalling the UI.
- *
- * A spec flagged `"panel": true` is PANEL-ONLY: it publishes to the session
- * panel store (via the settled fence source context) and renders nothing
- * in the message flow — the model updates the dock surface without stacking
- * UI blocks per round. */
-const FENCE_ERROR_STYLE: CSSProperties = {
-  margin: '0 0 6px',
-  padding: '6px 10px',
-  borderRadius: 6,
-  background: 'rgba(239, 68, 68, 0.14)',
-  border: '1px solid rgba(239, 68, 68, 0.4)',
-  color: '#f87171',
-  fontSize: 12,
-  lineHeight: 1.55,
-  whiteSpace: 'pre-wrap',
-}
-
-/**
- * Fallback for a ```dsh-ui fence whose body has no finished component yet.
- * Two very different situations land here and they must not be conflated:
- *
- * 1. **Streaming partial** — the reply is still being written and the JSON
- *    simply is not complete. The host marks the streaming message with
- *    `[data-streaming]` on the AssistantMarkdown root, which is an ancestor
- *    of every fence. While that marker is present, a plain code block is the
- *    correct rendering (partial JSON must never look like an error).
- *
- * 2. **Settled defect** — the message is finished but the body still does
- *    not parse as JSON (a malformed fence like a missing `}`). This used to
- *    fail silently: the fence degraded to a code block with no hint, and the
- *    author had no way to know the UI never rendered. Once the streaming
- *    marker is gone, surface a compact diagnostic with the parse position so
- *    the defect is visible instead of silent.
- *
- * The settle transition is observed with a layout effect that re-runs on
- * every render: the host removes `[data-streaming]` in the final update, so
- * the effect sees the marker disappear and flips `settled` once. Hosts that
- * never carry the marker (toolview, panel, static text) count as settled
- * from the first mount.
- */
-function FenceFallback({ raw, fenceKey }: { raw: string; fenceKey: Key }) {
-  const ref = useRef<HTMLDivElement | null>(null)
-  const [settled, setSettled] = useState(false)
-  useLayoutEffect(() => {
-    const node = ref.current
-    if (node !== null && node.closest('[data-streaming]') === null) setSettled(true)
-  })
-  const diagnostic = settled && raw.trim() !== '' ? describeJsonFailure(raw) : null
-  return (
-    <div ref={ref}>
-      {diagnostic !== null && (
-        <div style={FENCE_ERROR_STYLE} role="alert">
-          ⚠️ dsh-ui fence JSON 解析失败{diagnostic} —— 围栏保持为代码块；请让模型检查并修复 JSON 后重发。
-        </div>
-      )}
-      <CodeBlock key={fenceKey} code={`${raw}\n`} lang="dsh-ui" />
-    </div>
-  )
-}
-
-/**
- * Keyed publisher for a settled `panel:true` fence: submits ONE panel
- * operation from the host-provided stable source (id + order), in an
- * effect — never inside the render function. StrictMode's duplicate effects
- * are absorbed by the operation map's per-source dedup, so the panel folds
- * and notifies exactly once per source. Renders nothing.
- */
-function FencePanelPublisher({ sessionId, sourceId, order, spec }: {
-  sessionId: string
-  sourceId: string
-  order: readonly [number, number, number]
-  spec: GenuiSpec
-}) {
-  useEffect(() => {
-    const status: PanelOperationStatus = applyPanelOperation(sessionId, {
-      sourceId,
-      order,
-      mode: spec.append === true ? 'append' : 'replace',
-      spec,
-    })
-    if (status === 'overflow') diagnosePanelBudget(sessionId, sourceId)
-  }, [sessionId, sourceId, order, spec])
-  return null
-}
-
-export const renderGenuiFence: FenceRenderer = (raw, key, context) => {
-  const parsed = parsePartialGenuiSpec(raw)
-  let spec = parsed === null ? null : repairGenuiSpec(parsed)
-  if (spec === null) {
-    // Tier-1 (quote escape + trailing commas): safe at any time — adopted
-    // only when the whole body parses, so a still-growing streaming half
-    // keeps falling back to the code block, never flashing a repair banner.
-    const repaired = repairFenceJson(raw)
-    if (repaired !== null) {
-      const reparsed = parsePartialGenuiSpec(repaired.text)
-      spec = reparsed === null ? null : repairGenuiSpec(reparsed)
-    }
-    // Tier-2 (structural completion: missing quotes/brackets): only for
-    // settled messages — the host provides `source` exclusively once the
-    // message is finished, so streaming halves are never completed early.
-    if (spec === null && context?.source !== undefined) {
-      const completed = completeFenceJson(raw)
-      if (completed !== null) {
-        const reparsed = parsePartialGenuiSpec(completed.text)
-        spec = reparsed === null ? null : repairGenuiSpec(reparsed)
-      }
-    }
-  }
-  if (spec === null) return <FenceFallback key={key} fenceKey={key} raw={raw} />
-  if (spec.panel === true) {
-    // Publish only with a settled stable source — streaming/identity-less
-    // renders keep the panel untouched. Appends additionally gate on a
-    // complete body (a settled-but-malformed append never merges partial
-    // content).
-    if (context !== undefined && context.sessionId !== undefined && context.source !== undefined) {
-      if (spec.append === true && !isCompleteJson(raw)) return null
-      return (
-        <FencePanelPublisher
-          key={key}
-          sessionId={context.sessionId}
-          sourceId={context.source.id}
-          order={context.source.order}
-          spec={spec}
-        />
-      )
-    }
-    return null
-  }
-  const sessionId = context?.sessionId
-  return (
-    // React key carries the stable source identity when present (atomic
-    // remount at streaming→settled), falling back to the document key.
-    // Repaired specs render SILENTLY: once the UI renders, no amber note
-    // tells the user something was wrong — only an unrecoverable body keeps
-    // the red diagnostic.
-    <ErrorBoundary key={context?.source?.id ?? key} label="该界面">
-      <GenuiBlock
-        spec={spec}
-        // v2.7 durable state: session + stable source + content fingerprint —
-        // replaying the same content restores answers/lock/field values; new
-        // content (换题, edited spec) gets a fresh key. Without a stable
-        // source (streaming / non-conversation surfaces) state is not
-        // persisted.
-        stateKey={sessionId === undefined
-          ? undefined
-          : fenceStateKey(sessionId, context?.source?.id ?? String(key), JSON.stringify(spec))}
-      />
-    </ErrorBoundary>
-  )
 }
 
 /** Session panel action loop: same [genui-action] contract as inline fences,
@@ -247,11 +94,36 @@ function sendPanelInstruction(ctx: Context, sessionId: SessionId, instruction: s
   })
 }
 
+/**
+ * Inline-fence action relay (DOM channel): the same message template the
+ * contract host's sendGenuiAction uses, so the model sees one identical
+ * [genui-action] contract on both channels.
+ */
+function sendInlineGenuiAction(ctx: Context, sessionId: SessionId, action: string, payload: Record<string, unknown>): void {
+  const scoped = ctx.sessions.scope(sessionId)
+  const conversation = scoped?.get('conversation') as IConversation | undefined
+  if (conversation === undefined) return
+  const payloadText = Object.keys(payload).length === 0
+    ? ''
+    : ` 组件数据: ${JSON.stringify(payload)}`
+  void conversation.send(`[genui-action] ${action}。用户刚刚在界面中触发了动作 "${action}"，请根据组件数据执行相应操作，并用 dsh-ui 输出更新后的界面。${payloadText}`).catch(() => {
+    // A failed prompt (session gone, agent busy) drops the action;
+    // the UI stays interactive — the component is not disabled.
+  })
+}
+
 /** Cordis client entry: register the fence renderer on boot, the keyed
  * toolview for the render_ui tool, and the session panel dock; returning the
  * disposers lets cordis tear all registrations down on plugin unload. */
 export function apply(ctx: Context): () => void {
-  const disposers: Array<() => void> = [registerFenceRenderer('dsh-ui', renderGenuiFence)]
+  // Fence channel selection: the registry extension point when the host
+  // ships it (contract line), the DOM observer otherwise (pristine line).
+  // One plugin build serves both deployments.
+  const registerFn = (primitives as unknown as HostFenceExt).registerFenceRenderer
+  const disposers: Array<() => void> = typeof registerFn === 'function'
+    ? [registerFn('dsh-ui', renderGenuiFence)]
+    : (console.info('[genui] fence-registry 扩展点不存在（原版 DSH）——启用 DOM 渲染通道'),
+      [installDomFenceRenderer(ctx, (sessionId, action, payload) => sendInlineGenuiAction(ctx, sessionId, action, payload))])
   // Idle prefetch of the lazy engine assets: the browser downloads them at
   // LOW priority whenever the page is idle, so the first mermaid/3D node in
   // a session usually hits a warm cache instead of paying the fetch on first
@@ -291,7 +163,7 @@ export function apply(ctx: Context): () => void {
   }
 }
 
-/** Browser services: the slots registry (toolview + dock), sessions (for
- * the scoped conversation send behind panel actions), and inputTriggers (the
- * /panel command source). */
-export const inject = ['slots', 'sessions', 'inputTriggers']
+// Re-export the registry renderer for the test suite (setup.ts registers it
+// exactly like apply() does on contract hosts).
+export { renderGenuiFence }
+export type { GenuiFenceContext } from './fence-render.tsx'

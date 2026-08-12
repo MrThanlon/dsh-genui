@@ -4,7 +4,9 @@
 // stay independent; unmount cancels pending timers.
 import { cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { GenuiActionContext, MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
+import { hasFenceRegistry } from './setup'
+import { GenuiActionContext } from '../src/client/action-context.ts'
 import { GENUI_ACTION_DEBOUNCE_MS } from '../src/client/GenuiBlock.tsx'
 
 afterEach(() => {
@@ -19,7 +21,7 @@ function fenced(spec: unknown): string {
   return `\`\`\`dsh-ui\n${JSON.stringify(spec)}\n\`\`\``
 }
 
-describe('action debounce', () => {
+describe.skipIf(!hasFenceRegistry)('action debounce', () => {
   it('collapses rapid repeats into one action with the last payload', () => {
     const actions: Array<[string, Record<string, unknown>]> = []
     render(

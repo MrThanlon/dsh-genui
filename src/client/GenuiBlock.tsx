@@ -7,7 +7,7 @@
  * components live in src/client/blocks/*.
  */
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { useGenuiAction } from '@deepseek-ai/dsh-client-ui-primitives'
+import { useGenuiAction } from './action-context.ts'
 import css from './GenuiBlock.module.css'
 import { loadBlockState, saveBlockState } from './interaction-store.ts'
 import { renderNode } from './blocks/render-node.tsx'
