@@ -33,7 +33,7 @@
         "../../.dsh/source/current/packages/core/system-prompt/lib/types/index.d.ts"
       ],
       "@deepseek-ai/dsh-invariants": [
-        "../../.dsh/source/current/packages/support/invariants/lib/types/index.d.ts"
+        "../../.dsh/source/current/packages/runtime-diagnostics/invariants/lib/types/index.d.ts"
       ],
       "@deepseek-ai/dsh-tools": [
         "../../.dsh/source/current/packages/core/tools/lib/types/index.d.ts"
@@ -56,8 +56,8 @@
       "@deepseek-ai/dsh-client-ui-conversation/client": [
         "../../.dsh/source/current/packages/client/ui-conversation/lib/types/client/index.d.ts"
       ],
-      "@deepseek-ai/dsh-client-ui-slash/client": [
-        "../../.dsh/source/current/packages/client/ui-slash/lib/types/client/index.d.ts"
+      "@deepseek-ai/dsh-client-ui-input-trigger/client": [
+        "../../.dsh/source/current/packages/client/ui-input-trigger/lib/types/client/index.d.ts"
       ],
       "@deepseek-ai/dsh-client-locale/client": [
         "../../.dsh/source/current/packages/client/locale/lib/types/client/index.d.ts"

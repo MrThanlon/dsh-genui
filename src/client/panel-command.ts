@@ -14,8 +14,8 @@
  * Panel updates afterwards still flow through the model (say "更新面板" or
  * re-run render_ui) or through another /panel.
  */
-import type { SlashSource } from '@deepseek-ai/dsh-client-ui-slash/client'
-import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
+import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
+import type { ClientContext, SessionId } from '@deepseek-ai/dsh-client-runtime/client'
 import type { GenuiSpec } from './spec.ts'
 import { requestPanelExpand, setLocalPanel } from './panel-store.ts'
 
@@ -72,7 +72,7 @@ function panelClaim(sessionId: SessionId, sendInstruction: (sessionId: SessionId
   return {
     token: '/panel',
     hint: '开启 GenUI 面板；/panel <指令> 让模型定制；/panel clear 清空',
-    submit: async (args: string) => {
+    submit: async (args: string, _actx: ClientContext) => {
       const instruction = args.trim()
       if (instruction === '' ) {
         applyPanelCommand(sessionId, '')
@@ -98,22 +98,22 @@ function panelClaim(sessionId: SessionId, sendInstruction: (sessionId: SessionId
  * works without opening the menu (leading-token adjudication), and it also
  * catches `/panel clear` style args.
  */
-export function createPanelSlashSource(sendInstruction: (sessionId: SessionId, instruction: string) => void): SlashSource {
+export function createPanelSlashSource(sendInstruction: (sessionId: SessionId, instruction: string) => void): InputTriggerSource {
   return {
     trigger: '/',
     name: 'genui',
     order: 60,
-    candidates: async () => [{
+    candidates: async (_session, _req) => [{
       name: 'panel',
       description: '开启 GenUI 面板（/panel clear 清空；/panel <指令> 定制内容）',
       hint: '/panel',
     }],
-    onPick({ session }) {
-      return { claim: panelClaim(session.sessionId, sendInstruction) }
+    onPick(pick) {
+      return { claim: panelClaim(pick.session.sessionId, sendInstruction) }
     },
-    matchEnter: async (_session, line) => {
+    matchEnter: async (session, line, _signal) => {
       if (!/^\/panel(?:\s|$)/.test(line.trim())) return undefined
-      return { claim: panelClaim(_session.sessionId, sendInstruction) }
+      return { claim: panelClaim(session.sessionId, sendInstruction) }
     },
   }
 }

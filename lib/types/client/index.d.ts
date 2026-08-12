@@ -28,6 +28,6 @@ export declare const renderGenuiFence: FenceRenderer;
  * disposers lets cordis tear all registrations down on plugin unload. */
 export declare function apply(ctx: Context): () => void;
 /** Browser services: the slots registry (toolview + dock), sessions (for
- * the scoped conversation send behind panel actions), and slash (the /panel
- * command source). */
+ * the scoped conversation send behind panel actions), and inputTriggers (the
+ * /panel command source). */
 export declare const inject: string[];

@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.1] - 2026-08-13
+### 修改
+- **适配 0812 宿主契约线**：/panel 斜杠命令源从 `ctx.slash`（ui-slash，0812 线上已移除）迁到 `ctx.inputTriggers`（ui-input-trigger 的 `InputTriggerSource`：candidates(session, req) / onPick(pick) / matchEnter(session, line, signal) / submit(args, actx)）；client inject 同步改为 `['slots','sessions','inputTriggers']`
+- **tsconfig 宿主类型路径**：`dsh-invariants` → `packages/runtime-diagnostics/invariants`，ui-slash 类型路径 → `packages/client/ui-input-trigger`
+
+
 ## [0.7.0] - 2026-08-13
 ### 新增
 - **图表 hover 提示**：柱状图/分组柱（title 属性带系列名+数值）、环图与折线图（SVG `<title>` 元素）——悬停可见精确值，零依赖

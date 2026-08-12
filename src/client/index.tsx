@@ -32,7 +32,7 @@ import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
 import { applyPanelOperation, diagnosePanelBudget, type PanelOperationStatus } from './panel-store.ts'
 import { GenuiToolView } from './toolview.tsx'
 import type { GenuiSpec } from './spec.ts'
-import type { SlashServiceContract } from '@deepseek-ai/dsh-client-ui-slash/client'
+import type { InputTriggerServiceContract } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { completeFenceJson, describeJsonFailure, isCompleteJson, repairFenceJson } from '../shared/fence-repair.ts'
 import { assetUrl } from './asset-loader.ts'
 
@@ -278,13 +278,13 @@ export function apply(ctx: Context): () => void {
   // opens the panel dock (publishes the default spec + expand request),
   // clears it (/panel clear), or relays an instruction to the model
   // (/panel <指令>) so the panel gets tailored content.
-  const slash = ctx.get('slash') as SlashServiceContract | undefined
+  const slash = ctx.get('inputTriggers') as InputTriggerServiceContract | undefined
   if (slash !== undefined) {
     disposers.push(ctx.effect(() => slash.registerSource(
       createPanelSlashSource((sessionId, instruction) => sendPanelInstruction(ctx, sessionId, instruction)),
     ), 'genui: /panel'))
   } else {
-    console.warn('[genui] slash service unavailable; /panel command disabled')
+    console.warn('[genui] inputTriggers service unavailable; /panel command disabled')
   }
   return () => {
     for (const dispose of disposers) dispose()
@@ -292,6 +292,6 @@ export function apply(ctx: Context): () => void {
 }
 
 /** Browser services: the slots registry (toolview + dock), sessions (for
- * the scoped conversation send behind panel actions), and slash (the /panel
- * command source). */
-export const inject = ['slots', 'sessions', 'slash']
+ * the scoped conversation send behind panel actions), and inputTriggers (the
+ * /panel command source). */
+export const inject = ['slots', 'sessions', 'inputTriggers']

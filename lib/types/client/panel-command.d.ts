@@ -14,7 +14,7 @@
  * Panel updates afterwards still flow through the model (say "更新面板" or
  * re-run render_ui) or through another /panel.
  */
-import type { SlashSource } from '@deepseek-ai/dsh-client-ui-slash/client';
+import type { InputTriggerSource } from '@deepseek-ai/dsh-client-ui-input-trigger/client';
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client';
 import type { GenuiSpec } from './spec.ts';
 /** Default panel content published by `/panel`: the component overview. */
@@ -26,4 +26,4 @@ export declare const DEFAULT_PANEL_SPEC: GenuiSpec;
  * works without opening the menu (leading-token adjudication), and it also
  * catches `/panel clear` style args.
  */
-export declare function createPanelSlashSource(sendInstruction: (sessionId: SessionId, instruction: string) => void): SlashSource;
+export declare function createPanelSlashSource(sendInstruction: (sessionId: SessionId, instruction: string) => void): InputTriggerSource;
