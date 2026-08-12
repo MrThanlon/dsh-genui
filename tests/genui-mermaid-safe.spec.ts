@@ -62,4 +62,35 @@ describe('repairMermaidSource', () => {
     const src = 'sequenceDiagram\nAlice->>Bob: 你好'
     expect(repairMermaidSource(src)).toBe(src)
   })
+
+  it('never quotes labeled-edge spans (-- label -->)', () => {
+    const src = 'graph TD\nH -- 否(流式中) --> J'
+    expect(repairMermaidSource(src)).toBe(src)
+  })
+
+  it('quotes unquoted CJK node labels but not the edge label on the same line', () => {
+    const src = 'graph TD\nA[模型生成 spec] -- 否(流式中) --> B[修复完成]'
+    const repaired = repairMermaidSource(src)
+    expect(repaired).toContain('A["模型生成 spec"]')
+    expect(repaired).toContain('B["修复完成"]')
+    expect(repaired).toContain('-- 否(流式中) -->')
+    expect(repaired).not.toContain('("流式中")')
+  })
+
+  it('leaves thick and dotted edge labels alone', () => {
+    const src = 'graph LR\nA == 重连(已恢复) ==> B\nA -. 斜线(带括号) .-> C'
+    expect(repairMermaidSource(src)).toBe(src)
+  })
+
+  it('does not swallow the destination node of an unlabeled edge', () => {
+    const src = 'graph LR\nA --> B[模型] -- 下一步(确认) --> C'
+    const repaired = repairMermaidSource(src)
+    expect(repaired).toContain('B["模型"]')
+    expect(repaired).toContain('-- 下一步(确认) -->')
+  })
+
+  it('preserves edge labels when nothing else needs repair', () => {
+    const src = 'graph TD\nA -- 能 --> B -- 不能 --> C'
+    expect(repairMermaidSource(src)).toBe(src)
+  })
 })

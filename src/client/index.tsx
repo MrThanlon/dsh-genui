@@ -71,6 +71,173 @@ function describeJsonFailure(raw: string): string | null {
   }
 }
 
+/**
+ * Tier-1 repair — SAFE AT ANY TIME (streaming included): heals the most
+ * common model JSON typos that do NOT change the body's structure, and only
+ * when the whole body parses afterwards (so a still-growing streaming half
+ * can never be adopted):
+ *
+ * 1. Unescaped half-width `"` inside a string value — Chinese text quoted
+ *    with ASCII quotes (e.g. `对"别名路径"判定失败`), which makes JSON.parse
+ *    fail near that quote with "Expected ',' or ']'...".
+ * 2. Trailing commas before `}` / `]` or at end of input.
+ *
+ * The state-machine scan walks the raw body tracking string-open state:
+ * - inside a string, a quote whose next non-space char is NOT one of `, ] } :`
+ *   (or end of input) cannot legally close the string → escape it as `\"`;
+ * - a `,` whose next non-space char is `}` / `]` / end of input is a trailing
+ *   comma → drop it.
+ *
+ * Returns `{ text, repairs }` on success, or null when nothing needed fixing
+ * or the body still does not parse (callers fall through to tier-2 / banner).
+ */
+function repairFenceJson(raw: string): { text: string; repairs: number } | null {
+  try {
+    JSON.parse(raw)
+    return null
+  } catch {
+    // fall through to the repair scan
+  }
+  let out = ''
+  let inString = false
+  let escaped = false
+  let repairs = 0
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i]
+    if (escaped) {
+      out += ch
+      escaped = false
+      continue
+    }
+    if (inString && ch === '\\') {
+      out += ch
+      escaped = true
+      continue
+    }
+    if (ch === '"') {
+      if (!inString) {
+        inString = true
+        out += ch
+        continue
+      }
+      // Inside a string: is this quote the terminator? Look past whitespace.
+      let j = i + 1
+      while (j < raw.length && (raw[j] === ' ' || raw[j] === '\t' || raw[j] === '\n' || raw[j] === '\r')) j++
+      const next = j < raw.length ? raw[j] : ''
+      if (next === ',' || next === ']' || next === '}' || next === ':' || next === '') {
+        inString = false
+        out += ch
+      } else {
+        // Free-standing quote inside a value → escape it.
+        out += '\\"'
+        repairs++
+      }
+      continue
+    }
+    if (ch === ',') {
+      // Trailing comma before `}` / `]` / end of input → drop it.
+      let j = i + 1
+      while (j < raw.length && (raw[j] === ' ' || raw[j] === '\t' || raw[j] === '\n' || raw[j] === '\r')) j++
+      const next = j < raw.length ? raw[j] : ''
+      if (next === '}' || next === ']' || next === '') {
+        repairs++
+        continue
+      }
+    }
+    out += ch
+  }
+  if (repairs === 0) return null
+  try {
+    JSON.parse(out)
+    return { text: out, repairs }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Tier-2 repair — SETTLED MESSAGES ONLY (never while streaming): heals
+ * structural incompleteness — missing closing quotes/brackets — by appending
+ * the missing terminators. This must NOT run on a still-growing body (a half
+ * would parse as a finished prefix and flash premature UI), so callers gate
+ * it on `context.source` being present, which the host only provides once
+ * the message is settled.
+ *
+ * Runs on the tier-1 result (or the raw body), then closes any unterminated
+ * string and appends the missing `}` / `]` in stack order. Adopted only when
+ * the completed body parses as whole JSON.
+ */
+function completeFenceJson(raw: string): { text: string; repairs: number } | null {
+  const tier1 = repairFenceJson(raw)
+  const base = tier1 !== null ? tier1.text : raw
+  try {
+    JSON.parse(base)
+    return tier1
+  } catch {
+    // fall through to completion
+  }
+  let out = ''
+  const stack: Array<'}' | ']'> = []
+  let inString = false
+  let escaped = false
+  let repairs = tier1 !== null ? tier1.repairs : 0
+  for (let i = 0; i < base.length; i++) {
+    const ch = base[i]
+    if (escaped) {
+      out += ch
+      escaped = false
+      continue
+    }
+    if (inString) {
+      if (ch === '\\') {
+        out += ch
+        escaped = true
+        continue
+      }
+      if (ch === '"') inString = false
+      out += ch
+      continue
+    }
+    if (ch === '"') {
+      inString = true
+      out += ch
+      continue
+    }
+    if (ch === '{') {
+      stack.push('}')
+      out += ch
+      continue
+    }
+    if (ch === '[') {
+      stack.push(']')
+      out += ch
+      continue
+    }
+    if (ch === '}' || ch === ']') {
+      if (stack[stack.length - 1] === ch) stack.pop()
+      out += ch
+      continue
+    }
+    out += ch
+  }
+  if (inString) {
+    // Unterminated string value → close it.
+    out += '"'
+    repairs++
+  }
+  while (stack.length > 0) {
+    out += stack.pop()
+    repairs++
+  }
+  if (repairs === 0) return null
+  try {
+    JSON.parse(out)
+    return { text: out, repairs }
+  } catch {
+    return null
+  }
+}
+
 /** Inline diagnostic banner for a settled-but-malformed fence body. Kept
  * minimal and self-contained (inline styles only — the host may override
  * stylesheet rules), tone-friendly on both light and dark themes. */
@@ -205,7 +372,37 @@ function diagnosePanelBudget(sessionId: string, sourceId: string): void {
 
 export const renderGenuiFence: FenceRenderer = (raw, key, context) => {
   const parsed = parsePartialGenuiSpec(raw)
-  const spec = parsed === null ? null : repairGenuiSpec(parsed)
+  let spec = parsed === null ? null : repairGenuiSpec(parsed)
+  let repairNote: string | null = null
+  let issuesSource: unknown = parsed
+  if (spec === null) {
+    // Tier-1 (quote escape + trailing commas): safe at any time — adopted
+    // only when the whole body parses, so a still-growing streaming half
+    // keeps falling back to the code block, never flashing a repair banner.
+    const repaired = repairFenceJson(raw)
+    if (repaired !== null) {
+      const reparsed = parsePartialGenuiSpec(repaired.text)
+      spec = reparsed === null ? null : repairGenuiSpec(reparsed)
+      if (spec !== null) {
+        issuesSource = reparsed
+        repairNote = `已自动修复 ${repaired.repairs} 处 JSON 问题（字符串内未转义引号/尾逗号已处理）并渲染`
+      }
+    }
+    // Tier-2 (structural completion: missing quotes/brackets): only for
+    // settled messages — the host provides `source` exclusively once the
+    // message is finished, so streaming halves are never completed early.
+    if (spec === null && context?.source !== undefined) {
+      const completed = completeFenceJson(raw)
+      if (completed !== null) {
+        const reparsed = parsePartialGenuiSpec(completed.text)
+        spec = reparsed === null ? null : repairGenuiSpec(reparsed)
+        if (spec !== null) {
+          issuesSource = reparsed
+          repairNote = `已自动补全 ${completed.repairs} 处缺失的引号/括号并渲染`
+        }
+      }
+    }
+  }
   if (spec === null) return <FenceFallback key={key} fenceKey={key} raw={raw} />
   if (spec.panel === true) {
     // Publish only with a settled stable source — streaming/identity-less
@@ -231,7 +428,12 @@ export const renderGenuiFence: FenceRenderer = (raw, key, context) => {
     // React key carries the stable source identity when present (atomic
     // remount at streaming→settled), falling back to the document key.
     <ErrorBoundary key={context?.source?.id ?? key} label="该界面">
-      <SpecIssuesNote issues={visibleSpecIssues(parsed)} />
+      {repairNote !== null && (
+        <div style={SPEC_ISSUE_STYLE} role="note">
+          ⚠️ {repairNote}。
+        </div>
+      )}
+      <SpecIssuesNote issues={visibleSpecIssues(issuesSource)} />
       <GenuiBlock
         spec={spec}
         // v2.7 durable state: session + stable source + content fingerprint —

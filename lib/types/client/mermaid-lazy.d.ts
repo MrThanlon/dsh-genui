@@ -14,6 +14,14 @@ export declare function assertSafeSvg(svg: string): void;
  * spaces, and non-flowchart kinds are left untouched (apart from the
  * backtick/`<br/>` sanitation above, which is harmless everywhere in a
  * flowchart).
+ *
+ * Labeled-edge spans (`-- 文本 -->`, `== 文本 ==>`, `-. 文本 .->`) are free
+ * text and must never be quoted: wrapping them breaks the parser
+ * ("Expecting 'LINK' … got 'STR'"), observed live with
+ * `H -- 否(流式中) --> J`. Each span is swapped for a bracket-free
+ * placeholder before quoting and restored verbatim afterwards, so the quote
+ * pass can neither corrupt it nor be thrown off by inserted quotes
+ * elsewhere on the line.
  */
 export declare function repairMermaidSource(code: string): string;
 /**

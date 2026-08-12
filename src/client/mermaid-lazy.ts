@@ -73,12 +73,30 @@ export function assertSafeSvg(svg: string): void {
  * spaces, and non-flowchart kinds are left untouched (apart from the
  * backtick/`<br/>` sanitation above, which is harmless everywhere in a
  * flowchart).
+ *
+ * Labeled-edge spans (`-- 文本 -->`, `== 文本 ==>`, `-. 文本 .->`) are free
+ * text and must never be quoted: wrapping them breaks the parser
+ * ("Expecting 'LINK' … got 'STR'"), observed live with
+ * `H -- 否(流式中) --> J`. Each span is swapped for a bracket-free
+ * placeholder before quoting and restored verbatim afterwards, so the quote
+ * pass can neither corrupt it nor be thrown off by inserted quotes
+ * elsewhere on the line.
  */
 export function repairMermaidSource(code: string): string {
   const kind = /^([A-Za-z]+)/.exec(code.trim())?.[1] ?? ''
   if (kind !== 'graph' && kind !== 'flowchart') return code
   const cleaned = code.replace(/`/g, '').replace(/<br\s*\/?>/gi, ' ')
-  return cleaned.replace(
+  // A labeled edge is `--`/`==`/`-.` (not immediately `-->`/`==>`), a label
+  // made of non-dash chars or single dashes (never `--`, which would start a
+  // new edge), then the arrow. `[ \t]*` — never newlines — keeps the span on
+  // one line.
+  const EDGE = /(--|==|-\.)(?!>)[ \t]*([^-\n]|-(?!--))*?[ \t]*(-->|==>|\.->)/g
+  const spans: string[] = []
+  const masked = cleaned.replace(EDGE, (span) => {
+    spans.push(span)
+    return `\uE000${spans.length - 1}\uE001`
+  })
+  const quoted = masked.replace(
     /([\[\(])([^\[\]\(\)\{\}"'\n]*)([\]\)])/g,
     (whole, open: string, label: string, close: string) => {
       const trimmed = label.trim()
@@ -89,14 +107,29 @@ export function repairMermaidSource(code: string): string {
       return whole
     },
   )
+  return quoted.replace(/\uE000(\d+)\uE001/g, (whole, i: string) => spans[Number(i)] ?? whole)
 }
 
-/** One render attempt into a private container (keeps mermaid's temp DOM out
- * of `document.body`). The container is removed by the caller. */
+/** One render attempt into a private container. mermaid ≥ 11.16 resolves the
+ * diagram element via `document.body` while drawing flowcharts
+ * (`getDiagramElement`), so a DETACHED container makes every flowchart/graph
+ * render throw on an empty d3 selection ("Cannot read properties of null").
+ * The container is therefore mounted off-screen for the duration of the
+ * render — NOT `display:none`, which zeroes label measurements and makes
+ * dagre fail with "Could not find a suitable point" — and removed when done. */
 async function renderInto(m: typeof import('mermaid'), id: string, code: string, container: HTMLDivElement): Promise<string> {
-  const { svg } = await m.default.render(id, code, container)
-  assertSafeSvg(svg)
-  return svg
+  container.style.position = 'fixed'
+  container.style.left = '-100000px'
+  container.style.top = '0'
+  container.style.margin = '0'
+  document.body?.appendChild(container)
+  try {
+    const { svg } = await m.default.render(id, code, container)
+    assertSafeSvg(svg)
+    return svg
+  } finally {
+    container.remove()
+  }
 }
 
 /**

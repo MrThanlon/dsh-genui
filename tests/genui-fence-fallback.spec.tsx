@@ -91,3 +91,101 @@ describe('spec issue notes (parseable but structurally invalid)', () => {
     expect(screen.queryByRole('note')).toBeNull()
   })
 })
+
+describe('automatic quote-escape repair', () => {
+  // The most common model typo: Chinese text quoted with ASCII half-width
+  // quotes inside a JSON string value — the exact failure that used to land
+  // on the red banner (e.g. 对"别名路径"判定失败). The renderer must heal
+  // it and render the UI instead of showing the diagnostic.
+  const QUOTED = '{"title":"演示","items":[{"type":"text","content":"对"别名路径"判定失败"}]}'
+
+  it('heals free-standing quotes inside string values and renders the UI', () => {
+    render(<div>{renderGenuiFence(QUOTED, 'r1')}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    // The repaired spec renders as real UI (not a raw code block).
+    expect(document.body.textContent).toContain('判定失败')
+    // An amber note explains the auto-repair.
+    const note = screen.getByRole('note')
+    expect(note.textContent).toContain('已自动修复')
+  })
+
+  it('keeps the raw body as a code block when repair cannot succeed', () => {
+    // Broken in a way the narrow repair cannot heal: unbalanced brackets.
+    const UNREPAIRABLE = '{"title":"x","items":[{"type":"text","content":"半截'
+    render(<div>{renderGenuiFence(UNREPAIRABLE, 'r2')}</div>)
+    expect(screen.getByRole('alert').textContent).toContain('解析失败')
+    expect(document.body.textContent).toContain('半截')
+  })
+
+  it('does not touch already-valid JSON with escaped quotes', () => {
+    const VALID = '{"title":"x","items":[{"type":"text","content":"他说\\"你好\\""}]}'
+    render(<div>{renderGenuiFence(VALID, 'r3')}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(document.body.textContent).toContain('你好')
+  })
+
+  it('repairs multiple quoted phrases in one body', () => {
+    const MULTI = '{"title":"x","items":[{"type":"text","content":"他说"好的"然后"走了""}]}'
+    render(<div>{renderGenuiFence(MULTI, 'r4')}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.body.textContent).toContain('走了')
+    expect(screen.getByRole('note').textContent).toMatch(/已自动修复 \d+ 处/)
+  })
+
+  it('heals the real-world failure: a table whose cells contain ASCII-quoted Chinese', () => {
+    // Regression: the exact production incident — a table where several cell
+    // values quote Chinese with half-width quotes (watch 对"别名路径"判定失败,
+    // 必须是"空的", 断言"空环境"失败). This body previously landed on the
+    // red diagnostic banner; the repair must render the full table instead.
+    const REAL = '{"title":"11 个失败全清单","gap":8,"items":[{"type":"table","columns":["测试文件","测的是什么","为什么挂","跟我有关？"],"rows":[["hmr-config ×2","开发时配置文件热更新的监听行为","测试路径带符号链接（机器上 ~/.dsh/source/current 是指向快照的链接），watch 逻辑对"别名路径"判定失败","❌ 基线就挂（已在没改动的原始快照上复现）"],["profile ×1","profile 目录自愈：把"错误的符号链接"替换成对的","Node 24 的已知 bug：rmSync 删不掉指向目录的符号链接（报 EISDIR），自愈一触发就崩——这是机器上 AGENTS.md 里记录过的老坑","❌ 基线就挂"],["workspace-context ×1","把默认 DSH 数据目录标签成 ~/.dsh","测试断言依赖 HOME 环境变量指向；测试环境里 HOME 指向的位置使断言落空","❌ 基线就挂"],["ui-trajectory client-bundle ×1","加载预构建的轨迹视图 bundle 并验证注册","需要预先构建好的 bundle 产物，产物与源码不同步（过期产物）","❌ 基线就挂"],["workflow-workerthread ×1","验证 worker 子进程的环境必须是"空的"","本机全局环境变量（NODE_USE_ENV_PROXY、TSX_TSCONFIG_PATH 等）泄漏进 worker，测试断言"空环境"失败","❌ 基线就挂（同一环境变量也干扰了别处）"],["oxlint-contract ×1","代码检查器（oxlint）的报错文本格式","文本匹配偶发超时；单独重跑通过","❌ 并行负载 flaky"],["code-block ×1","代码高亮语法的懒加载","超时类（11 秒限），负载高时变慢；单独重跑通过","❌ 并行负载 flaky"],["acp-snapshot ×3~4","快照测试框架的回合等待时序","依赖事件时序，并行跑时偶发；单独跑 60/60 全过","❌ 并行负载 flaky"]]}]}'
+    render(<div>{renderGenuiFence(REAL, 'r5')}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    // The repaired table renders (spot-check cells from the raw body).
+    expect(document.body.textContent).toContain('hmr-config')
+    expect(document.body.textContent).toContain('别名路径')
+    expect(document.body.textContent).toContain('空环境')
+    expect(document.body.textContent).toContain('acp-snapshot')
+    expect(screen.getByRole('note').textContent).toMatch(/已自动修复 \d+ 处/)
+  })
+
+  it('drops trailing commas (tier-1, safe at any time)', () => {
+    // The partial parser tolerates a trailing comma and renders the finished
+    // components — either way the user sees UI, never the red banner.
+    const TRAILING = '{"title":"x","items":[{"type":"text","content":"好"},]}'
+    render(<div>{renderGenuiFence(TRAILING, 'r6')}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.body.textContent).toContain('好')
+  })
+
+  it('completes missing brackets for settled messages (tier-2)', () => {
+    // A body cut mid-structure: the partial parser renders the finished
+    // prefix as UI; a settled message additionally heals the whole body.
+    const CUT = '{"title":"x","items":[{"type":"text","content":"补全"}'
+    render(<div>{renderGenuiFence(CUT, 'r7', { sessionId: 's', source: { id: 'x', order: [1, 0, 0] } })}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.body.textContent).toContain('补全')
+  })
+
+  it('does NOT complete a cut body while streaming (no source)', () => {
+    // Without `context.source` the body may still be growing — completing it
+    // would flash premature UI. It must stay a plain code block.
+    const CUT = '{"title":"x","items":[{"type":"text","content":"半截'
+    render(<div data-streaming="true">{renderGenuiFence(CUT, 'r8')}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.body.textContent).toContain('半截')
+    // Even settled-but-source-less hosts (non-conversation surfaces) keep the
+    // code block + diagnostic rather than inventing content.
+    const { rerender } = render(<div data-streaming="true">{renderGenuiFence(CUT, 'r9')}</div>)
+    rerender(<div>{renderGenuiFence(CUT, 'r9')}</div>)
+    expect(screen.getByRole('alert').textContent).toContain('解析失败')
+  })
+
+  it('completes an unterminated string for settled messages (tier-2)', () => {
+    const CUT = '{"title":"x","items":[{"type":"text","content":"没闭合'
+    render(<div>{renderGenuiFence(CUT, 'r10', { sessionId: 's', source: { id: 'x', order: [1, 0, 0] } })}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(document.body.textContent).toContain('没闭合')
+    expect(screen.getByRole('note').textContent).toMatch(/已自动补全 \d+ 处/)
+  })
+})
