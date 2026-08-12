@@ -17,6 +17,11 @@
  */
 import type { Context } from '@deepseek-ai/cordis';
 import { type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives';
+/** Add low-priority prefetch links for the lazy engine assets (mermaid/three).
+ * Browser-dependent: some engines ignore `<link rel=prefetch>`; harmless
+ * either way — the on-demand loader still covers a cache miss. Exported for
+ * tests. */
+export declare function prefetchGenuiAssets(): void;
 export declare const renderGenuiFence: FenceRenderer;
 /** Cordis client entry: register the fence renderer on boot, the keyed
  * toolview for the render_ui tool, and the session panel dock; returning the

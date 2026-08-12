@@ -23,6 +23,7 @@ import type { JsonValue } from '@deepseek-ai/dsh-session'
 import type { GenericCallView, GenericResultView, JsonSchemaNode, ToolDefinition } from '@deepseek-ai/dsh-tools'
 import type { GenuiSpec } from '../client/spec.ts'
 import { GENUI_LIMITS, countGenuiNodes, repairGenuiSpec } from '../client/guard.ts'
+import { completeFenceJson } from '../shared/fence-repair.ts'
 
 /**
  * Arguments schema: an open `spec` slot. The schema must NOT reject anything
@@ -201,7 +202,8 @@ export function createRenderUiTool(): ToolDefinition {
 const VALIDATE_DESCRIPTION =
   'Validate the JSON body of a ```dsh-ui fence BEFORE emitting it — use for non-trivial specs (≥3 nodes or containing a table); skip for trivial ones (≤2 nodes). '
   + 'Pass the exact JSON text you are about to put inside the fence as the "spec" argument (a string). '
-  + 'Returns ✅ when it parses as a valid GenUI spec, or ❌ with the exact position, bracket counts, and likely causes when it does not — fix the JSON, re-validate, and only then emit the fence.'
+  + 'Returns ✅ when it parses as a valid GenUI spec, or ❌ with the exact position, bracket counts, and likely causes when it does not — fix the JSON, re-validate, and only then emit the fence. '
+  + 'When the JSON is broken but repairable (unescaped quotes, trailing commas, missing closers), the ❌ reply INCLUDES the auto-repaired JSON — copy it verbatim into the fence instead of rewriting by hand.'
 
 const VALIDATE_PARAMETERS: Record<string, unknown> = {
   type: 'object',
@@ -297,7 +299,15 @@ export function createValidateDshUiTool(): ToolDefinition {
         parsed = JSON.parse(raw)
       } catch (error: unknown) {
         const detail = error instanceof Error ? error.message : String(error)
-        return `❌ dsh-ui 围栏 JSON 解析失败：${detail}。\n${bracketDiagnostic(raw)}  请按错误信息修正后重新调用本工具验证，通过后再发出围栏。\n${COMMON_CAUSES}`
+        // Pre-emission, both repair tiers are safe (no streaming half exists
+        // in a validation call). When the repair succeeds, hand the model the
+        // FIXED JSON instead of asking it to re-author the fix — re-writing
+        // the whole fence by hand is where the next typo comes from.
+        const repaired = completeFenceJson(raw)
+        if (repaired !== null && repairGenuiSpec(JSON.parse(repaired.text) as unknown) !== null) {
+          return `❌ dsh-ui 围栏 JSON 解析失败：${detail}。\n${bracketDiagnostic(raw)}  已自动修复 ${repaired.repairs} 处，下面是修复后的 JSON，直接作为围栏正文发出即可（无需再验证）：\n\`\`\`\n${repaired.text}\n\`\`\``
+        }
+        return `❌ dsh-ui 围栏 JSON 解析失败：${detail}。\n${bracketDiagnostic(raw)}  自动修复未能恢复（结构损坏），请按错误信息修正后重新调用本工具验证，通过后再发出围栏。\n${COMMON_CAUSES}`
       }
       const spec = repairGenuiSpec(parsed)
       if (spec === null) {

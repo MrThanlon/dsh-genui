@@ -41,6 +41,7 @@ export type GenuiNode =
   | GenuiRadio
   | GenuiSubmit
   | GenuiSwitch
+  | GenuiSlider
   | GenuiTextarea
   | GenuiAccordion
   | GenuiCopy
@@ -253,6 +254,9 @@ export interface GenuiPlotSeries {
   label?: string
   /** Stroke color. */
   color?: string
+  /** v2.9 draw shape: line (default), area (fill to the baseline), scatter
+   * (dots only). */
+  kind?: 'line' | 'area' | 'scatter'
   /** v2: adjustable parameters (e.g. {a: 2} in "a*sin(x)") — one slider each, live re-render. */
   params?: Array<{
     name: string
@@ -397,6 +401,26 @@ export interface GenuiSwitch {
   checked?: boolean
   /** v2: when set, interaction sends this action back to the model. */
   action?: string
+}
+
+/**
+ * Slider: a range input for numeric form values (v2.9). The current value
+ * shows next to the track; dragging fires the action (debounced by the
+ * block) and, with an `id`, persists across refresh and joins the sibling
+ * submit's `fields` collection (the value is the numeric string).
+ */
+export interface GenuiSlider {
+  type: 'slider'
+  label?: string
+  min?: number
+  max?: number
+  step?: number
+  /** Default value; defaults to `min` (or 0). */
+  value?: number
+  /** v2: when set, interaction sends this action back to the model. */
+  action?: string
+  /** v2.9: stable field id — durable value + submit collection. */
+  id?: string
 }
 
 export interface GenuiTextarea {

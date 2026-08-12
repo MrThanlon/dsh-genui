@@ -153,8 +153,12 @@ describe('validate_dsh_ui tool', () => {
     // Bracket-count diagnostic points at the stray `}`.
     expect(value).toContain('括号计数')
     expect(value).toContain(']}')
-    // Actionable: tells the model to fix and re-validate.
-    expect(value).toContain('重新调用本工具验证')
+    // Repairable: the reply hands the model the fixed JSON instead of
+    // asking it to re-author the fix by hand.
+    expect(value).toContain('已自动修复')
+    const match = /```\n([\s\S]*)\n```/.exec(value)
+    expect(match).not.toBeNull()
+    expect(() => JSON.parse(match![1]!)).not.toThrow()
   })
 
   it('rejects JSON that parses but is not a GenUI spec', async () => {
@@ -193,5 +197,29 @@ describe('validate_dsh_ui tool', () => {
     expect(value).toContain('4 个组件')
     const vv = String(await vtool.execute({ spec: JSON.stringify(spec) }))
     expect(vv).toContain('4 个组件')
+  })
+
+  it('returns the AUTO-REPAIRED JSON when the body is repairable', async () => {
+    // trailing comma + missing closing brackets — tier-1/tier-2 heal it.
+    const bad = '{"items":[{"type":"text","content":"你好"},],'
+    const value = String(await vtool.execute({ spec: bad }))
+    expect(value).toContain('已自动修复')
+    expect(value).toContain('直接作为围栏正文发出即可')
+    // the repaired body appears verbatim and parses
+    const match = /```\n([\s\S]*)\n```/.exec(value)
+    expect(match).not.toBeNull()
+    const repaired = match![1]!
+    expect(() => JSON.parse(repaired)).not.toThrow()
+    expect(repaired).toContain('"content":"你好"')
+    expect(repaired).not.toMatch(/,\]/)
+  })
+
+  it('keeps the diagnostics-only reply when the body cannot be repaired', async () => {
+    const value = String(await vtool.execute({ spec: '{"items": [{"type": "tex' }))
+    // repairable in theory, but the result is not a valid spec (missing content) — wait:
+    // this one IS completable but the spec has no valid nodes; assert the no-auto-repair path:
+    const bad = '{"title": "x", garbage'
+    const v2 = String(await vtool.execute({ spec: bad }))
+    expect(v2).toContain('自动修复未能恢复')
   })
 })

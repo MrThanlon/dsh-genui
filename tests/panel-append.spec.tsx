@@ -9,6 +9,9 @@ import { applyPanelOperation, clearSessionPanel, getPanelSpec, mergePanelSpecs }
 afterEach(() => {
   cleanup()
   clearSessionPanel('p1')
+  // panel persistence writes localStorage — wipe it so a reused session id
+  // never hydrates stale storage from an earlier test.
+  localStorage.clear()
 })
 
 const text = (content: string) => ({ type: 'text', content })

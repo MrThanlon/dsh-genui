@@ -63,11 +63,16 @@ export declare function applyPanelOperation(sessionId: string, op: PanelOperatio
 export declare function setLocalPanel(sessionId: string, spec: GenuiSpec | null): void;
 /** Log one budget-overflow diagnostic per source (replays stay silent). */
 export declare function diagnosePanelBudget(sessionId: string, sourceId: string): void;
-/** Tear down a session's panel state (session destroy / hard clear). Also
- * drops the session's expand token and overflow diagnostics, so a long-lived
- * app never accumulates per-session state for closed sessions. */
+/** Tear down a session's panel state (session destroy / hard clear). Memory
+ * only: drops the in-memory record, the session's expand token, and overflow
+ * diagnostics, so a long-lived app never accumulates per-session state for
+ * closed sessions. The localStorage entry SURVIVES — reopening the session
+ * restores the panel instantly (that is the persistence feature); an explicit
+ * user clear goes through setLocalPanel(null), which persists the cleared
+ * state + barrier. */
 export declare function clearSessionPanel(sessionId: string): void;
-/** Current folded spec for a session (useSyncExternalStore getSnapshot). */
+/** Current folded spec for a session (useSyncExternalStore getSnapshot).
+ * Lazily hydrates from localStorage on first access after a reload. */
 export declare function getPanelSpec(sessionId: string): GenuiSpec | null;
 /** Subscribe to panel changes. Returns the disposer. */
 export declare function subscribePanel(listener: () => void): () => void;

@@ -3,6 +3,7 @@
 // script injection, engine handoff, and the failure path.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { assetUrl, loadGenuiAsset } from '../src/client/asset-loader.ts'
+import { prefetchGenuiAssets } from '../src/client/index.tsx'
 
 afterEach(() => {
   document.head.innerHTML = ''
@@ -61,5 +62,20 @@ describe('loadGenuiAsset', () => {
     ;(window as unknown as Record<string, unknown>).__GenuiAssets__ = {}
     script.dispatchEvent(new Event('load'))
     await expect(promise).rejects.toThrow(/registered no 'three' engine/)
+  })
+})
+
+describe('idle prefetch', () => {
+  it('injects one low-priority prefetch link per engine asset', () => {
+    prefetchGenuiAssets()
+    const links = [...document.head.querySelectorAll('link[rel="prefetch"]')]
+    expect(links.map(l => l.getAttribute('href'))).toEqual([
+      `/plugins/@deepseek-ai/dsh-genui/assets/mermaid.js`,
+      `/plugins/@deepseek-ai/dsh-genui/assets/three.js`,
+    ])
+    expect(links.every(l => (l as HTMLLinkElement).as === 'script')).toBe(true)
+    // idempotent: a second call adds nothing
+    prefetchGenuiAssets()
+    expect(document.head.querySelectorAll('link[rel="prefetch"]').length).toBe(2)
   })
 })

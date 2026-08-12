@@ -316,6 +316,22 @@
 }
 .table tr:last-child td { border-bottom: none; }
 
+/* sortable header button (v2.9) */
+.thSort {
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.thSort:hover { color: var(--dsw-alias-label-primary); }
+.thSortMark { color: var(--dsl-g-accent); }
+.thSort:focus-visible { outline: 2px solid var(--dsl-g-accent); outline-offset: 1px; border-radius: var(--dsl-g-radius-control); }
+
 /* Chart skeleton: plot area with baseline + 25/50/75% gridlines, category
    labels in their own row below the axis (they must never cross the lines). */
 .chart { display: flex; flex-direction: column; gap: var(--dsl-g-gap-xs); }
@@ -612,6 +628,26 @@
   transition: left 0.2s;
 }
 .switchOn .switchKnob { left: 19px; }
+
+/* slider form node (v2.9) */
+.sliderRow {
+  display: flex;
+  align-items: center;
+  gap: var(--dsl-g-gap-md);
+  width: 100%;
+}
+.sliderInput {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--dsl-g-accent);
+}
+.sliderValue {
+  min-width: 44px;
+  text-align: right;
+  font-family: var(--dsl-g-font-mono);
+  font-size: var(--dsl-g-font-data);
+  color: var(--dsw-alias-label-primary);
+}
 
 .textarea {
   width: 100%;

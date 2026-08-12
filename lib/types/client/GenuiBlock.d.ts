@@ -1,28 +1,4 @@
-import type { GenuiSpec } from './spec.ts';
-export interface GenuiBlockProps {
-    /** Parsed spec to render. */
-    spec: GenuiSpec;
-    /**
-     * v2: optional action callback. Interactive components carrying an
-     * `action` field fire it (button click, switch toggle, form submit);
-     * absent = components are display-only (v1 behavior).
-     */
-    onAction?: ((action: string, payload: Record<string, unknown>) => void) | undefined;
-    /**
-     * v2.7: durable-state key (session + slot + content fingerprint). When set,
-     * interaction state (radio answers, submit lock, field values) persists to
-     * localStorage and restores on refresh / re-render of the same content.
-     */
-    stateKey?: string | undefined;
-}
-/**
- * Trailing debounce window (ms) for one `[genui-action]` name: rapid
- * repeated interactions on one control (button mashing, switch flipping)
- * collapse into a single action with the LAST payload. Different action
- * names stay independent. The model round-trip takes seconds, so a few
- * hundred ms of trailing delay is imperceptible — and it stops bursts of
- * queued user turns.
- */
+import type { GenuiBlockProps } from './blocks/state.ts';
 export declare const GENUI_ACTION_DEBOUNCE_MS = 300;
 /**
  * Render a GenUI spec as an inline block. Falls back to nothing when the spec

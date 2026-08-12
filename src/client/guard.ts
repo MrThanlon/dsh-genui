@@ -146,6 +146,7 @@ const BADGE_TONES = ['success', 'warn', 'danger', 'accent'] as const
 const INPUT_TYPES = ['text', 'email', 'password'] as const
 const CALLOUT_TONES = ['info', 'success', 'warning', 'error'] as const
 const CHART_KINDS = ['bars', 'line', 'donut'] as const
+const PLOT_KINDS = ['line', 'area', 'scatter'] as const
 const MESH_SHAPES = ['box', 'sphere', 'cone', 'cylinder', 'torus'] as const
 const FILE_TYPES = ['file', 'dir'] as const
 
@@ -366,6 +367,24 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       if (label === undefined) return null
       return { type: 'switch', label, ...opt('checked', v.checked === true ? true : undefined), ...opt('action', str(v.action, 200)) }
     }
+    case 'slider': {
+      const min = num(v.min, -1e9, 1e9) ?? 0
+      const max = num(v.max, -1e9, 1e9) ?? 100
+      const lo = Math.min(min, max)
+      const hi = Math.max(min, max)
+      const step = num(v.step, 1e-9, Math.max(hi - lo, 1e-9))
+      const value = num(v.value, lo, hi) ?? lo
+      return {
+        type: 'slider',
+        min: lo,
+        max: hi,
+        ...opt('step', step),
+        value,
+        ...opt('label', str(v.label, GENUI_LIMITS.maxString)),
+        ...opt('action', str(v.action, 200)),
+        ...opt('id', str(v.id, 200)),
+      }
+    }
     case 'textarea': {
       return {
         type: 'textarea',
@@ -544,7 +563,7 @@ function repairPlotSeries(v: unknown, cap: number): GenuiPlot['series'] | undefi
         })
       }
     }
-    out.push({ expr, ...opt('label', str(o.label, 128)), ...opt('color', color(o.color)), ...opt('params', params.length > 0 ? params : undefined) })
+    out.push({ expr, ...opt('label', str(o.label, 128)), ...opt('color', color(o.color)), ...opt('kind', enu(o.kind, PLOT_KINDS)), ...opt('params', params.length > 0 ? params : undefined) })
   }
   return out
 }
@@ -818,6 +837,10 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
     case 'button': case 'checkbox': case 'link': case 'switch':
       if (typeof v.label !== 'string') errors.push(`${at}: type '${type}' requires label (string)`)
       isStr('label')
+      break
+    case 'slider':
+      isStr('label')
+      isNum('min'); isNum('max'); isNum('step'); isNum('value')
       break
     case 'input': case 'textarea':
       isStr('label'); isStr('placeholder'); isStr('value')

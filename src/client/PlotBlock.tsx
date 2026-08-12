@@ -8,7 +8,7 @@
  * which render as live sliders under the chart — dragging re-samples the
  * curve in place. The plot itself supports drag-to-pan and wheel-to-zoom.
  */
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import { sampleExpr } from './safe-math.ts'
 import css from './PlotBlock.module.css'
 
@@ -33,6 +33,8 @@ export interface PlotSeries {
   label?: string | undefined
   /** Stroke color; defaults to the accent token (multi-series auto-assign). */
   color?: string | undefined
+  /** v2.9 draw shape: line (default), area (fill to baseline), scatter. */
+  kind?: 'line' | 'area' | 'scatter' | undefined
   /** v2: adjustable parameters, one slider each, live re-render. */
   params?: PlotSeriesParam[] | undefined
 }
@@ -247,6 +249,33 @@ export const PlotBlock = memo(function PlotBlock({
   const hasData = sampled.some(p => p.points.length > 1)
   const hasValidRange = Number.isFinite(xMin) && Number.isFinite(xMax) && xMax > xMin && Number.isFinite(hi) && Number.isFinite(lo) && hi > lo
 
+  // v2.9 draw shapes: line (polyline), area (fill to the locked baseline),
+  // scatter (dots only). Colors stay on the shared categorical palette.
+  const renderSeries = (s: PlotSeries, i: number, points: string): ReactNode => {
+    const color = seriesColor(i, sampled.length, s.color) ?? 'var(--dsw-alias-state-business-primary, #4f8ef7)'
+    const kind = s.kind ?? 'line'
+    if (kind === 'scatter') {
+      const coords = points === '' ? [] : points.split(' ').map(pt => {
+        const [x, y] = pt.split(',')
+        return [Number(x), Number(y)] as const
+      })
+      return (
+        <g key={i}>
+          {coords.map(([cx, cy], k) => <circle key={k} cx={cx} cy={cy} r={2.6} className={css.scatterDot} style={{ fill: color }} />)}
+        </g>
+      )
+    }
+    if (kind === 'area') {
+      if (points === '') return <Polyline key={i} points="" className={css.line} color={color} />
+      const firstX = points.slice(0, points.indexOf(' ')).split(',')[0]!
+      const lastX = points.slice(points.lastIndexOf(' ') + 1).split(',')[0]!
+      const baseY = toY(lo)
+      const poly = `${firstX},${baseY.toFixed(2)} ${points} ${lastX},${baseY.toFixed(2)}`
+      return <polygon key={i} points={poly} className={css.area} style={{ fill: color }} />
+    }
+    return <Polyline key={i} points={points} className={css.line} color={color} />
+  }
+
   // Drag-to-pan and wheel-to-zoom on the SVG surface. Pan/zoom move the x
   // window only; the y range stays locked so parameter changes stay visible.
   const onPointerDown = (e: React.PointerEvent): void => {
@@ -307,14 +336,7 @@ export const PlotBlock = memo(function PlotBlock({
           <line x1={PAD_L} x2={WIDTH - PAD_R} y1={HEIGHT - PAD_B} y2={HEIGHT - PAD_B} className={css.axis} />
           <line x1={PAD_L} x2={PAD_L} y1={PAD_T} y2={HEIGHT - PAD_B} className={css.axis} />
           {/* series */}
-          {sampled.map(({ series: s, points }, i) => (
-            <Polyline
-              key={i}
-              points={points}
-              className={css.line}
-              color={seriesColor(i, sampled.length, s.color)}
-            />
-          ))}
+          {sampled.map(({ series: s, points }, i) => renderSeries(s, i, points))}
         </svg>
       ) : (
         <div className={css.empty}>

@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.7.0] - 2026-08-13
+### 新增
+- **图表 hover 提示**：柱状图/分组柱（title 属性带系列名+数值）、环图与折线图（SVG `<title>` 元素）——悬停可见精确值，零依赖
+- **validate_dsh_ui 返回修复版 JSON**：坏 JSON 可修复时（引号/尾随逗号/缺失闭合符），❌ 回复直接附上自动修复后的正文，模型照抄即可，不再手重写（重写是下一个错别字的来源）；fence-repair 逻辑抽到共享模块 src/shared/fence-repair.ts，node 工具与客户端渲染器共用同一实现；tier-2 扫描改为单次统一修复（此前 tier-1 部分修复成果在整体解析失败时被丢弃，叠加缺陷无法合并修复）
+- **slider 表单节点**：数值滑块（min/max/step/value/label），带 `id` 跨刷新持久化并进 submit 的 `fields` 收集；拖拽经防抖合并成一次 action；提示词与 SKILL 同步
+- **表格本地排序**：表头点击 升序 → 降序 → 还原（数值感知比较 + aria-sort 状态），local-first 零往返
+- **plot 系列画法**：series 支持 `kind: line|area|scatter`——area 填色到基线、scatter 散点；提示词与 SKILL 同步
+- **面板跨重启持久化**：面板快照 + /panel 本地覆盖持久化到 localStorage（每会话条目、LRU 上限 50），刷新/重开会话秒级恢复、/panel clear 永久生效
+- **资产空闲预取**：boot 时注入 `<link rel=prefetch>` 低优先级预取 mermaid/three 资产，首个图通常命中热缓存
+
+### 修复
+- **历史滚动重放重复折叠**：被后续 replace 裁掉的旧 append，在滚动历史重新挂载卡片时会再次合并进面板——新增 seen 去重注册表（所有处理过的 sourceId 幂等），并引入持久化重放 barrier（水合后 ≤ 持久化 maxSeenSeq 的旧重放一律死）
+- **tier-1/tier-2 组合缺陷不可修复**：尾随逗号 + 缺闭合符并存的坏体此前修不好，统一扫描后一次修复
+
+### 修改
+- **GenuiBlock 按族拆分**：1,620 行单文件拆为 blocks/{state,basic,charts,forms,advanced,render-node} + 薄壳 GenuiBlock（状态/防抖/持久化），类型循环通过 state 模块打破，行为零变化（全量测试保绿）
+- 提示词与 SKILL 同步 slider/plot kind/表格排序/验证器修复版语义
+
+### 测试
+- 315 → 335（+20）：图表提示、slider 三态、表格排序三态、plot 三种画法、预取幂等、validate 修复版返回、面板持久化/水合/重放 barrier、消费后重放不再折叠
+
 ## [0.6.0] - 2026-08-13
 ### 修复
 - **SKILL.md frontmatter 从安装起就解析失败**：description 里含 `: ` 序列（`charts: callouts`、`prose: 要点`），被宿主 yaml 解析器判为紧凑嵌套映射 → 技能被 skill-local 静默忽略 → 会话技能目录从不显示 genui、`skill` 工具一直报 "unknown or no longer available"。修复：description 加 YAML 双引号。技能目录是每步活刷新的（digest 机制），修复即刻生效无需重启。新增 `tests/skill-md.spec.ts` 用宿主同款 yaml 解析器钉住 frontmatter，杜绝静默回归。UI 围栏此前一直正常是因为它走系统提示词注入通道（genui:fence section），与技能目录是两条独立通道

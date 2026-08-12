@@ -61,6 +61,16 @@
   stroke-linecap: round;
 }
 
+/* v2.9 draw shapes */
+.area {
+  stroke: none;
+  fill-opacity: 0.16;
+}
+.scatterDot {
+  stroke: var(--dsw-alias-bg-base, #17171a);
+  stroke-width: 1;
+}
+
 .legend {
   display: flex;
   flex-wrap: wrap;

@@ -19,6 +19,9 @@ afterEach(() => {
   vi.useRealTimers()
   clearSessionPanel('s1')
   clearSessionPanel('s2')
+  // panel persistence writes localStorage — wipe it between tests so a
+  // session id reused across tests never hydrates stale storage.
+  localStorage.clear()
 })
 
 const text = (content: string) => ({ type: 'text', content })
@@ -60,9 +63,11 @@ describe('panel store', () => {
     expect(fn).toHaveBeenCalledTimes(2)
   })
 
-  it('clears the panel on null publish', () => {
+  it('clears the panel on null publish (local override)', () => {
     direct('s1', { items: [text('x')] })
-    clearSessionPanel('s1')
+    // the user-facing hard clear is the local override; clearSessionPanel is
+    // memory teardown (its storage survives for reopen hydration).
+    setLocalPanel('s1', null)
     expect(getPanelSpec('s1')).toBeNull()
   })
 })
@@ -324,13 +329,38 @@ describe('panel operation model (real order, no Infinity)', () => {
     unsub()
   })
 
-  it('clears unconditionally via null and lets later publishes rebuild', () => {
+  it('a local clear persists and blocks old replays; a later publish rebuilds', () => {
     direct('s1', { items: [text('x')] }, 5)
-    clearSessionPanel('s1')
+    setLocalPanel('s1', null)
     expect(getPanelSpec('s1')).toBeNull()
-    // after a clear, any publish rebuilds the panel (fence or tool result)
-    direct('s1', { items: [text('y')] }, 4)
-    expect(getPanelSpec('s1')?.items).toHaveLength(1)
+    // old replay at/below the clear barrier stays dead
+    direct('s1', { items: [text('old')] }, 4)
+    expect(getPanelSpec('s1')).toBeNull()
+    // a genuinely newer publish rebuilds the panel
+    direct('s1', { items: [text('y')] }, 6)
+    expect(getPanelSpec('s1')?.items).toEqual([text('y')])
+  })
+
+  it('a consumed op dropped by a later replace never re-folds on replay (history scroll)', () => {
+    applyPanelOperation('s1', { sourceId: 'a:10', order: [10, 0, 0], mode: 'append', spec: { items: [text('A')] } })
+    applyPanelOperation('s1', { sourceId: 'r:20', order: [20, 0, 0], mode: 'replace', spec: { items: [text('R')] } })
+    // scrolling history re-mounts the old card and re-publishes its op:
+    // it was already consumed, so it must NOT re-append under R.
+    applyPanelOperation('s1', { sourceId: 'a:10', order: [10, 0, 0], mode: 'append', spec: { items: [text('A')] } })
+    expect(getPanelSpec('s1')!.items).toEqual([text('R')])
+  })
+
+  it('restores the panel from localStorage after memory teardown (reload)', () => {
+    direct('s1', { items: [text('持久')] }, 9)
+    clearSessionPanel('s1') // dock unmount on session prune
+    // first read after teardown re-hydrates from storage
+    expect(getPanelSpec('s1')!.items).toEqual([text('持久')])
+    // old replays stay dead after hydration
+    applyPanelOperation('s1', { sourceId: 'old:3', order: [3, 0, 0], mode: 'replace', spec: { items: [text('旧')] } })
+    expect(getPanelSpec('s1')!.items).toEqual([text('持久')])
+    // a genuinely newer op folds on top of the restored snapshot
+    applyPanelOperation('s1', { sourceId: 'new:10', order: [10, 0, 0], mode: 'replace', spec: { items: [text('新')] } })
+    expect(getPanelSpec('s1')!.items).toEqual([text('新')])
   })
 })
 

@@ -33,6 +33,24 @@ import { applyPanelOperation, diagnosePanelBudget, type PanelOperationStatus } f
 import { GenuiToolView } from './toolview.tsx'
 import type { GenuiSpec } from './spec.ts'
 import type { SlashServiceContract } from '@deepseek-ai/dsh-client-ui-slash/client'
+import { completeFenceJson, describeJsonFailure, isCompleteJson, repairFenceJson } from '../shared/fence-repair.ts'
+import { assetUrl } from './asset-loader.ts'
+
+/** Add low-priority prefetch links for the lazy engine assets (mermaid/three).
+ * Browser-dependent: some engines ignore `<link rel=prefetch>`; harmless
+ * either way — the on-demand loader still covers a cache miss. Exported for
+ * tests. */
+export function prefetchGenuiAssets(): void {
+  if (typeof document === 'undefined') return
+  for (const file of ['mermaid.js', 'three.js']) {
+    if (document.head.querySelector(`link[rel="prefetch"][href="${assetUrl(file)}"]`) !== null) continue
+    const link = document.createElement('link')
+    link.rel = 'prefetch'
+    link.as = 'script'
+    link.href = assetUrl(file)
+    document.head.appendChild(link)
+  }
+}
 
 /** Render a ```dsh-ui fence body as interactive components. While the body
  * still has no finished component (fence open / malformed) the renderer falls
@@ -45,214 +63,6 @@ import type { SlashServiceContract } from '@deepseek-ai/dsh-client-ui-slash/clie
  * panel store (via the settled fence source context) and renders nothing
  * in the message flow — the model updates the dock surface without stacking
  * UI blocks per round. */
-/** A fence body counts as complete when it parses as a whole JSON value —
- * used to gate append publishes, which must merge exactly once (never per
- * streaming chunk). */
-function isCompleteJson(raw: string): boolean {
-  try {
-    JSON.parse(raw)
-    return true
-  } catch {
-    return false
-  }
-}
-
-/** Short human-readable reason for a body that fails whole-JSON parsing, or
- * null when it parses. Positions come from the host's JSON.parse error. */
-function describeJsonFailure(raw: string): string | null {
-  try {
-    JSON.parse(raw)
-    return null
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
-    const pos = msg.match(/position (\d+)/i)
-    const where = pos !== null ? `（字符 ${pos[1]} 附近）` : ''
-    return `${where}${msg.slice(0, 140)}`
-  }
-}
-
-/**
- * Tier-1 repair — SAFE AT ANY TIME (streaming included): heals the most
- * common model JSON typos that do NOT change the body's structure, and only
- * when the whole body parses afterwards (so a still-growing streaming half
- * can never be adopted):
- *
- * 1. Unescaped half-width `"` inside a string value — Chinese text quoted
- *    with ASCII quotes (e.g. `对"别名路径"判定失败`), which makes JSON.parse
- *    fail near that quote with "Expected ',' or ']'...".
- * 2. Trailing commas before `}` / `]` or at end of input.
- *
- * The state-machine scan walks the raw body tracking string-open state:
- * - inside a string, a quote whose next non-space char is NOT one of `, ] } :`
- *   (or end of input) cannot legally close the string → escape it as `\"`;
- * - a `,` whose next non-space char is `}` / `]` / end of input is a trailing
- *   comma → drop it.
- *
- * Returns `{ text, repairs }` on success, or null when nothing needed fixing
- * or the body still does not parse (callers fall through to tier-2 / banner).
- */
-function repairFenceJson(raw: string): { text: string; repairs: number } | null {
-  try {
-    JSON.parse(raw)
-    return null
-  } catch {
-    // fall through to the repair scan
-  }
-  let out = ''
-  let inString = false
-  let escaped = false
-  let repairs = 0
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i]
-    if (escaped) {
-      out += ch
-      escaped = false
-      continue
-    }
-    if (inString && ch === '\\') {
-      out += ch
-      escaped = true
-      continue
-    }
-    if (ch === '"') {
-      if (!inString) {
-        inString = true
-        out += ch
-        continue
-      }
-      // Inside a string: is this quote the terminator? Look past whitespace.
-      let j = i + 1
-      while (j < raw.length && (raw[j] === ' ' || raw[j] === '\t' || raw[j] === '\n' || raw[j] === '\r')) j++
-      const next = j < raw.length ? raw[j] : ''
-      if (next === ',' || next === ']' || next === '}' || next === ':' || next === '') {
-        inString = false
-        out += ch
-      } else {
-        // Free-standing quote inside a value → escape it.
-        out += '\\"'
-        repairs++
-      }
-      continue
-    }
-    if (ch === ',') {
-      // Trailing comma before `}` / `]` / end of input → drop it.
-      let j = i + 1
-      while (j < raw.length && (raw[j] === ' ' || raw[j] === '\t' || raw[j] === '\n' || raw[j] === '\r')) j++
-      const next = j < raw.length ? raw[j] : ''
-      if (next === '}' || next === ']' || next === '') {
-        repairs++
-        continue
-      }
-    }
-    out += ch
-  }
-  if (repairs === 0) return null
-  try {
-    JSON.parse(out)
-    return { text: out, repairs }
-  } catch {
-    return null
-  }
-}
-
-/**
- * Tier-2 repair — SETTLED MESSAGES ONLY (never while streaming): heals
- * structural incompleteness — missing closing quotes/brackets — by appending
- * the missing terminators, and heals stray closers — a `]` mistyped as `}` or
- * a duplicated terminator — by skipping closers that do not match the open
- * stack (they cannot be legal JSON). This must NOT run on a still-growing
- * body (a half would parse as a finished prefix and flash premature UI), so
- * callers gate it on `context.source` being present, which the host only
- * provides once the message is settled.
- *
- * Runs on the tier-1 result (or the raw body), then closes any unterminated
- * string and appends the missing `}` / `]` in stack order, while skipping
- * mismatched closers. Adopted only when the completed body parses as whole
- * JSON.
- */
-function completeFenceJson(raw: string): { text: string; repairs: number } | null {
-  const tier1 = repairFenceJson(raw)
-  const base = tier1 !== null ? tier1.text : raw
-  try {
-    JSON.parse(base)
-    return tier1
-  } catch {
-    // fall through to completion
-  }
-  let out = ''
-  const stack: Array<'}' | ']'> = []
-  let inString = false
-  let escaped = false
-  let repairs = tier1 !== null ? tier1.repairs : 0
-  for (let i = 0; i < base.length; i++) {
-    const ch = base[i]
-    if (escaped) {
-      out += ch
-      escaped = false
-      continue
-    }
-    if (inString) {
-      if (ch === '\\') {
-        out += ch
-        escaped = true
-        continue
-      }
-      if (ch === '"') inString = false
-      out += ch
-      continue
-    }
-    if (ch === '"') {
-      inString = true
-      out += ch
-      continue
-    }
-    if (ch === '{') {
-      stack.push('}')
-      out += ch
-      continue
-    }
-    if (ch === '[') {
-      stack.push(']')
-      out += ch
-      continue
-    }
-    if (ch === '}' || ch === ']') {
-      if (stack[stack.length - 1] === ch) {
-        stack.pop()
-        out += ch
-      } else {
-        // Mismatched closer (e.g. a `]` mistyped as `}`, or a duplicated
-        // terminator): no legal JSON can contain it here, so skip it and let
-        // the remaining closers pair up again. The whole-body parse below is
-        // the final arbiter — if skipping made things worse, nothing is
-        // adopted and the diagnostic banner stays.
-        repairs++
-      }
-      continue
-    }
-    out += ch
-  }
-  if (inString) {
-    // Unterminated string value → close it.
-    out += '"'
-    repairs++
-  }
-  while (stack.length > 0) {
-    out += stack.pop()
-    repairs++
-  }
-  if (repairs === 0) return null
-  try {
-    JSON.parse(out)
-    return { text: out, repairs }
-  } catch {
-    return null
-  }
-}
-
-/** Inline diagnostic banner for a settled-but-malformed fence body. Kept
- * minimal and self-contained (inline styles only — the host may override
- * stylesheet rules), tone-friendly on both light and dark themes. */
 const FENCE_ERROR_STYLE: CSSProperties = {
   margin: '0 0 6px',
   padding: '6px 10px',
@@ -442,6 +252,11 @@ function sendPanelInstruction(ctx: Context, sessionId: SessionId, instruction: s
  * disposers lets cordis tear all registrations down on plugin unload. */
 export function apply(ctx: Context): () => void {
   const disposers: Array<() => void> = [registerFenceRenderer('dsh-ui', renderGenuiFence)]
+  // Idle prefetch of the lazy engine assets: the browser downloads them at
+  // LOW priority whenever the page is idle, so the first mermaid/3D node in
+  // a session usually hits a warm cache instead of paying the fetch on first
+  // use. Never blocks first paint; the loader still handles a miss.
+  prefetchGenuiAssets()
   // Keyed toolview: the harness dispatches 'tool.call.toolview' by wire tool
   // name; registering under 'render_ui' gives the tool's result card the
   // GenUI renderer (reading the repaired spec from result meta). The toolview

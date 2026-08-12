@@ -67,11 +67,20 @@ interface FoldResult {
 
 interface SessionPanelState {
   ops: Map<string, PanelOperation>
+  /** Every sourceId ever processed (kept or dropped) — the replay dedup
+   * register. `ops` only keeps the ops in the current fold, so a consumed op
+   * dropped by a later replace used to be indistinguishable from a first
+   * arrival and re-folded on history scroll; `seen` makes replays idempotent
+   * without breaking genuine out-of-order first arrivals. */
+  seen: Map<string, PanelOrder>
   overflow: PanelOperation | null
   /** Local /panel override base; null = cleared. */
   local: GenuiSpec | null
   /** Replays at/below this seq are dead (blocked by the local override). */
   localBarrier: number
+  /** Replays at/below this seq are dead (persisted-session hydration barrier;
+   * live sessions keep -1 — the seen register covers them). */
+  replayBarrier: number
   maxSeenSeq: number
   snapshot: GenuiSpec | null
 }
@@ -80,7 +89,93 @@ const sessions = new Map<string, SessionPanelState>()
 const listeners = new Set<() => void>()
 
 function emptyState(): SessionPanelState {
-  return { ops: new Map(), overflow: null, local: null, localBarrier: -1, maxSeenSeq: -1, snapshot: null }
+  return { ops: new Map(), seen: new Map(), overflow: null, local: null, localBarrier: -1, replayBarrier: -1, maxSeenSeq: -1, snapshot: null }
+}
+
+/* ---------------- localStorage persistence ---------------- */
+
+const STORAGE_KEY = 'dsh.genui.panel'
+/** Max persisted sessions; LRU-evicted on write (the deterministic fold is
+ * unaffected — hydration only seeds the fold base, history replays rebuild
+ * anything evicted). */
+const MAX_PERSISTED_SESSIONS = 50
+
+/** What survives a page reload: the folded snapshot, the local /panel
+ * override, and the barriers that keep old replays from resurrecting either. */
+interface PersistedPanel {
+  snapshot: GenuiSpec | null
+  local: GenuiSpec | null
+  localBarrier: number
+  maxSeenSeq: number
+}
+
+interface PanelStorageShape {
+  order: string[]
+  sessions: Record<string, PersistedPanel>
+}
+
+function readPanelStorage(): PanelStorageShape {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw === null) return { order: [], sessions: {} }
+    const parsed = JSON.parse(raw) as Partial<PanelStorageShape>
+    if (!Array.isArray(parsed.order) || typeof parsed.sessions !== 'object' || parsed.sessions === null) {
+      return { order: [], sessions: {} }
+    }
+    return {
+      order: parsed.order.filter(k => typeof k === 'string'),
+      sessions: parsed.sessions as Record<string, PersistedPanel>,
+    }
+  } catch {
+    return { order: [], sessions: {} }
+  }
+}
+
+function writePanelStorage(sessionId: string, entry: PersistedPanel): void {
+  try {
+    const store = readPanelStorage()
+    const order = store.order.filter(k => k !== sessionId)
+    order.unshift(sessionId)
+    const sessions = { ...store.sessions, [sessionId]: entry }
+    while (order.length > MAX_PERSISTED_SESSIONS) {
+      const evicted = order.pop()
+      if (evicted !== undefined) delete sessions[evicted]
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ order, sessions }))
+  } catch {
+    // Quota / privacy-mode failures are non-fatal: the panel stays live in
+    // memory, only cross-restart persistence is lost.
+  }
+}
+
+/** Lazy session state: hydrate from localStorage once per session when the
+ * in-memory record is absent (first access after a reload). The persisted
+ * snapshot + barriers restore the panel instantly; replays at/below the
+ * persisted maxSeenSeq are dead, so history scrolling can never resurrect or
+ * duplicate content. */
+function stateOf(sessionId: string): SessionPanelState {
+  const existing = sessions.get(sessionId)
+  if (existing !== undefined) return existing
+  let state = emptyState()
+  try {
+    const stored = readPanelStorage().sessions[sessionId]
+    if (stored !== undefined) {
+      state = {
+        ops: new Map(),
+        seen: new Map(),
+        overflow: null,
+        local: stored.local ?? null,
+        localBarrier: stored.localBarrier ?? -1,
+        replayBarrier: stored.maxSeenSeq ?? -1,
+        maxSeenSeq: stored.maxSeenSeq ?? -1,
+        snapshot: stored.snapshot ?? null,
+      }
+    }
+  } catch {
+    // storage unreadable: behave like a fresh session
+  }
+  sessions.set(sessionId, state)
+  return state
 }
 
 function compareOrder(a: PanelOrder, b: PanelOrder): number {
@@ -99,16 +194,16 @@ function compareOrder(a: PanelOrder, b: PanelOrder): number {
  */
 function fold(state: SessionPanelState, extra: PanelOperation | null): FoldResult | null {
   if (extra !== null) {
-    if (extra.order[0] <= state.localBarrier) return null // old replay under the local override
-    if (state.ops.has(extra.sourceId)) return null // idempotent replay
+    if (extra.order[0] <= state.localBarrier || extra.order[0] <= state.replayBarrier) return null // old replay under a barrier
+    if (state.seen.has(extra.sourceId)) return null // idempotent replay (kept OR previously consumed)
     if (state.overflow !== null && state.overflow.sourceId === extra.sourceId) return null
     if (extra.mode === 'append' && state.overflow !== null && compareOrder(extra.order, state.overflow.order) > 0) {
       // Later than the overflow barrier: rejected without touching the fold.
       return null
     }
   }
-  // Only live ops (strictly after the local barrier) participate.
-  const ops = [...state.ops.values()].filter(op => op.order[0] > state.localBarrier)
+  // Only live ops (strictly after both barriers) participate.
+  const ops = [...state.ops.values()].filter(op => op.order[0] > state.localBarrier && op.order[0] > state.replayBarrier)
   if (extra !== null) ops.push(extra)
   ops.sort((a, b) => compareOrder(a.order, b.order))
   // The latest VALID replace resets everything before it; start the fold
@@ -163,11 +258,22 @@ function fold(state: SessionPanelState, extra: PanelOperation | null): FoldResul
   return { snapshot, kept, overflow, maxSeenSeq }
 }
 
-function commit(state: SessionPanelState, result: FoldResult): void {
+function commit(state: SessionPanelState, result: FoldResult, sessionId: string): void {
   state.snapshot = result.snapshot
   state.overflow = result.overflow
   state.maxSeenSeq = result.maxSeenSeq
   state.ops = new Map(result.kept.map(op => [op.sourceId, op]))
+  // Every processed op joins the replay dedup register — kept or dropped,
+  // accepted or overflow-rejected: a history-scroll replay must never
+  // re-fold a source the fold already consumed.
+  for (const op of result.kept) state.seen.set(op.sourceId, op.order)
+  if (result.overflow !== null) state.seen.set(result.overflow.sourceId, result.overflow.order)
+  writePanelStorage(sessionId, {
+    snapshot: state.snapshot,
+    local: state.local,
+    localBarrier: state.localBarrier,
+    maxSeenSeq: state.maxSeenSeq,
+  })
 }
 
 export type PanelOperationStatus = 'accepted' | 'idempotent' | 'blocked' | 'overflow'
@@ -178,21 +284,17 @@ export type PanelOperationStatus = 'accepted' | 'idempotent' | 'blocked' | 'over
  * source (e.g. "panel at its node/appends budget — send a replace").
  */
 export function applyPanelOperation(sessionId: string, op: PanelOperation): PanelOperationStatus {
-  let state = sessions.get(sessionId)
-  if (state === undefined) {
-    state = emptyState()
-    sessions.set(sessionId, state)
-  }
+  const state = stateOf(sessionId)
   const result = fold(state, op)
   if (result === null) {
-    if (state.ops.has(op.sourceId) || state.overflow?.sourceId === op.sourceId) return 'idempotent'
+    if (state.seen.has(op.sourceId) || state.overflow?.sourceId === op.sourceId) return 'idempotent'
     return 'blocked'
   }
   const status: PanelOperationStatus = result.overflow !== null && result.overflow.sourceId === op.sourceId
     ? 'overflow'
     : 'accepted'
   const changed = state.snapshot !== result.snapshot
-  commit(state, result)
+  commit(state, result, sessionId)
   if (changed) for (const fn of listeners) fn()
   return status
 }
@@ -207,13 +309,7 @@ export function applyPanelOperation(sessionId: string, op: PanelOperation): Pane
  * into the override as usual.
  */
 export function setLocalPanel(sessionId: string, spec: GenuiSpec | null): void {
-  const state = sessions.get(sessionId)
-  if (state === undefined) {
-    if (spec === null) return
-    sessions.set(sessionId, { ...emptyState(), local: spec, snapshot: spec })
-    for (const fn of listeners) fn()
-    return
-  }
+  const state = stateOf(sessionId)
   const barrier = state.maxSeenSeq
   // A clear when local is already null is still a change when the barrier
   // moves: the barrier is what kills old history replays.
@@ -223,7 +319,7 @@ export function setLocalPanel(sessionId: string, spec: GenuiSpec | null): void {
   // extra is null here, so fold never rejects the candidate (its null
   // returns live behind the `extra !== null` gate).
   const result = fold(state, null)!
-  commit(state, result)
+  commit(state, result, sessionId)
   for (const fn of listeners) fn()
 }
 
@@ -240,9 +336,13 @@ export function diagnosePanelBudget(sessionId: string, sourceId: string): void {
   )
 }
 
-/** Tear down a session's panel state (session destroy / hard clear). Also
- * drops the session's expand token and overflow diagnostics, so a long-lived
- * app never accumulates per-session state for closed sessions. */
+/** Tear down a session's panel state (session destroy / hard clear). Memory
+ * only: drops the in-memory record, the session's expand token, and overflow
+ * diagnostics, so a long-lived app never accumulates per-session state for
+ * closed sessions. The localStorage entry SURVIVES — reopening the session
+ * restores the panel instantly (that is the persistence feature); an explicit
+ * user clear goes through setLocalPanel(null), which persists the cleared
+ * state + barrier. */
 export function clearSessionPanel(sessionId: string): void {
   const had = sessions.delete(sessionId)
   const hadToken = expandTokens.delete(sessionId)
@@ -257,9 +357,10 @@ export function clearSessionPanel(sessionId: string): void {
 
 /* ---------------- reads / subscription ---------------- */
 
-/** Current folded spec for a session (useSyncExternalStore getSnapshot). */
+/** Current folded spec for a session (useSyncExternalStore getSnapshot).
+ * Lazily hydrates from localStorage on first access after a reload. */
 export function getPanelSpec(sessionId: string): GenuiSpec | null {
-  return sessions.get(sessionId)?.snapshot ?? null
+  return stateOf(sessionId).snapshot
 }
 
 /** Subscribe to panel changes. Returns the disposer. */

@@ -18,6 +18,8 @@ export interface PlotSeries {
     label?: string | undefined;
     /** Stroke color; defaults to the accent token (multi-series auto-assign). */
     color?: string | undefined;
+    /** v2.9 draw shape: line (default), area (fill to baseline), scatter. */
+    kind?: 'line' | 'area' | 'scatter' | undefined;
     /** v2: adjustable parameters, one slider each, live re-render. */
     params?: PlotSeriesParam[] | undefined;
 }
