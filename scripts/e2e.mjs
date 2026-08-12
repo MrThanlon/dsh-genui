@@ -107,7 +107,7 @@ try {
   // ── 安装插件 ────────────────────────────────────────────────────────────
   if (INSTALL === 'git') {
     log('安装插件（git+https，私有仓库）...')
-    const r = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', 'git+https://github.com/taekchef/dsh-genui.git'], { env, stdio: 'inherit' })
+    const r = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', 'git+https://github.com/dsh-external/dsh-genui.git'], { env, stdio: 'inherit' })
     if (r.status !== 0) fail('git URL 安装失败（见上方输出）')
   } else if (INSTALL === 'tarball') {
     log(`安装插件（tarball ${TARBALL}）...`)

@@ -1,5 +1,5 @@
 #!/bin/sh
-# dsh-genui 一键安装脚本（私有仓库：taekchef/dsh-genui，需 gh 登录）
+# dsh-genui 一键安装脚本（私有仓库：dsh-external/dsh-genui，需 gh 登录）
 #
 # 用法:
 #   ./scripts/install.sh            # 装进默认 web profile
@@ -23,8 +23,8 @@ if [ "$fail_early" = 1 ]; then
   exit 1
 fi
 
-REPO_URL="git+https://github.com/taekchef/dsh-genui.git"
-GIT_URL="https://github.com/taekchef/dsh-genui.git"
+REPO_URL="git+https://github.com/dsh-external/dsh-genui.git"
+GIT_URL="https://github.com/dsh-external/dsh-genui.git"
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 # Web 会话的 skill 服务从 agentsHome（默认 ~/.agents）发现技能，dshHome 的
 # ~/.dsh/skills 在部分宿主演进中不再进入会话目录 —— 两个根都同步，模型从哪
