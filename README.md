@@ -1,6 +1,8 @@
 # 🎨 dsh-genui
 
 > 让模型的回答长出界面——文字还在，可交互的 UI 已经能用。
+>
+> 🔌 生态：仓库已挂 `#dsh` · `#dsh-plugin` topic，欢迎 @dsh-plugin 收录。
 
 模型不再只回你文字。装上它，你问"这个月订单怎么样"，它一边分析一边在回答里渲染出一张**能点的数据面板**：看趋势、拖滑块、按刷新，模型会真的响应你。
 
@@ -48,14 +50,14 @@ grep -r registerFenceRenderer <dsh源码>/packages/client/ui-primitives/src/
 
 前置条件，缺一不可：
 
-1. **dsh 是最新内测版**：需含 `fence-registry` 扩展点（2026-08-09 之后的内测构建）。旧版装上会 fence 不渲染或聊天白屏——先按上方「dsh 版本要求」更新 dsh 再装
+1. **dsh 是最新内测版**：需含 `fence-registry` 扩展点（2026-08-09 之后的内测构建已加入）。旧版装上会 fence 不渲染或聊天白屏——先按上方「dsh 版本要求」更新 dsh 再装
 2. **`pnpm` 在 PATH 上**：`dsh plugin` 命令依赖它。没有就 `corepack enable`（或 `npm i -g pnpm`），然后**新开一个终端**，确认 `pnpm -v` 有输出
-3. **GitHub 已登录**：插件仓库在私有组织 `dsh-external`，需要 `gh auth login` 或已配置 git credential helper
+3. **GitHub 已登录**：插件仓库是私有的（`taekchef/dsh-genui`），需要 `gh auth login` 或已配置 git credential helper
 
 安装（一行命令，自动带上全部依赖）：
 
 ```sh
-dsh plugin --profile web add git+https://github.com/dsh-external/dsh-genui.git
+dsh plugin --profile web add git+https://github.com/taekchef/dsh-genui.git
 ```
 
 > ⚠️ **别用 `link:` 装一个刚 clone 的目录**——`link:` 不会安装插件的依赖（mermaid / three / react），装完渲染器会挂。请用上面的 git URL 方式；只有本地开发迭代才用 link:（见下文）。
@@ -67,7 +69,7 @@ dsh plugin --profile web add git+https://github.com/dsh-external/dsh-genui.git
 clone 后直接跑，脚本会检查上述三个前置、执行安装、并提示重启：
 
 ```sh
-git clone https://github.com/dsh-external/dsh-genui.git
+git clone https://github.com/taekchef/dsh-genui.git
 cd dsh-genui
 ./scripts/install.sh
 ```
@@ -131,7 +133,8 @@ dsh plugin --profile web add link:$PWD
 - **显示成代码块？** 查三处：dsh 版本带 fence-registry（见顶部「版本要求」，旧版会不渲染）、`dsh plugin --profile web list` 里有本插件、重启 + 硬刷新。
 - **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧——先更新 dsh 再重装插件，见顶部「版本要求」。
 - **`dsh: pnpm not found on PATH`？** 装 pnpm 后**新开终端**再试（`corepack enable` 或 `npm i -g pnpm`）。
-- **安装时卡在 git 凭据/404？** 仓库在私有组织，先 `gh auth login`，再用 git URL 方式安装。
+- **安装时卡在 git 凭据/404？** 仓库是私有的（`taekchef/dsh-genui`），先 `gh auth login`（或配置 git credential helper / SSH），再用 git URL 方式安装。
+- **能 npm install 吗？** 不能——插件不发布 npm（package.json 已设 `private: true`，`npm/pnpm publish` 会被直接拒绝），只走私有 Git URL 安装：`dsh plugin --profile web add git+https://github.com/taekchef/dsh-genui.git`。
 - **装了但 scene3d/mermaid 不渲染？** 引擎（mermaid / three）不再内联进 client.js——它们在首次用到时按需加载（`/plugins/@deepseek-ai/dsh-genui/assets/*.js`，插件自带 HTTP 路由托管）。先重启 dsh web + 硬刷新（Cmd+Shift+R）；仍不渲染就卸掉重装（`dsh plugin --profile web remove @deepseek-ai/dsh-genui` 后再 add）。旧版宿主缺少资产路由时会降级显示源码/加载失败提示，更新 dsh 即可。
 - **模型不主动输出？** 重启后新会话生效；或直接说"用 dsh-ui 输出"。
 - **clone 后没有 lib/？** `pnpm install && pnpm run check` 自己构建。

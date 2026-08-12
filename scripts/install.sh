@@ -1,11 +1,11 @@
 #!/bin/sh
-# dsh-genui 一键安装脚本（内测成员用；分发只走私有 Git URL，绝不公开发布）
+# dsh-genui 一键安装脚本（私有仓库：taekchef/dsh-genui，需 gh 登录）
 #
 # 用法:
 #   ./scripts/install.sh            # 装进默认 web profile
 #   ./scripts/install.sh tui        # 装进自定义 profile
 #
-# 做什么: 检查三个前置（dsh / pnpm / 私有仓库可访问）→ 用 git URL 方式把插件
+# 做什么: 检查三个前置（dsh / pnpm / 仓库可访问）→ 用 git URL 方式把插件
 # 装进 profile → 同步 genui skill（带文件安全边界）→ 提示重启验证。
 # 与手装唯一区别是多了前置自检，安装命令本身和 README 一致。
 
@@ -23,8 +23,8 @@ if [ "$fail_early" = 1 ]; then
   exit 1
 fi
 
-REPO_URL="git+https://github.com/dsh-external/dsh-genui.git"
-GIT_URL="https://github.com/dsh-external/dsh-genui.git"
+REPO_URL="git+https://github.com/taekchef/dsh-genui.git"
+GIT_URL="https://github.com/taekchef/dsh-genui.git"
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 # Web 会话的 skill 服务从 agentsHome（默认 ~/.agents）发现技能，dshHome 的
 # ~/.dsh/skills 在部分宿主演进中不再进入会话目录 —— 两个根都同步，模型从哪
@@ -119,9 +119,9 @@ if ! command -v pnpm >/dev/null 2>&1; then
 fi
 ok "pnpm: $(pnpm --version)"
 
-# ── 前置 3: 私有仓库凭据（分发只走私有 Git URL，不公开发布）──────────────
+# ── 前置 3: 私有仓库凭据（分发只走私有 Git URL，不公开发布）───────────────────────────────
 if ! GIT_TERMINAL_PROMPT=0 git ls-remote "$GIT_URL" HEAD >/dev/null 2>&1; then
-  fail "无法访问私有仓库 $GIT_URL —— 请先 'gh auth login'（或配置 git credential helper / SSH），并确认你有 dsh-external 组织访问权限。"
+  fail "无法访问私有仓库 $GIT_URL —— 请先 'gh auth login'（或配置 git credential helper / SSH）。"
 fi
 ok "GitHub 私有仓库可访问"
 

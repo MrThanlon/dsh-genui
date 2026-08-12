@@ -1,6 +1,9 @@
 # Changelog
 
 ## [0.7.2] - 2026-08-13
+### 发布
+- **仓库随 0813 内测收编迁移至个人账号（保持私有）**：`dsh-external/dsh-genui` → `taekchef/dsh-genui`（个人账号，内测期间不公开），GitHub topics 补上内测群要求的 `dsh`、`dsh-plugin`（原有 `marisa-plugin`/`web-ui`/`generative-ui` 保留）；README/安装脚本/e2e 中安装与 clone URL、私有仓库前提说明同步更新（私有仓库需 gh 登录）
+- **发布渠道红线落地**：package.json 设 `private: true`（`npm/pnpm publish` 被硬拒绝）；npm 上无任何已发布版本（`@deepseek-ai/dsh-genui` / `dsh-genui` / `@taekchef/dsh-genui` 均 404）；分发只走私有 Git URL，不发布 npm/Workshop 等任何公开渠道
 ### 新增
 - **DOM 渲染通道（纯插件化）**：fence 渲染改为双模——宿主提供 fence-registry 扩展点（契约线）时走原 registry 通道；原版 DSH（无扩展点）时启用 DOM 观察通道：MutationObserver 盯会话内 `.md-code-block`（稳定类名），`[data-streaming]` 落定后按语言标签找到 `dsh-ui` 围栏，解析 JSON 并以插件自有 React 根挂载同一套渲染管线（react-dom/client 平台模块）；原始代码块隐藏保留以承接流式更新，卸载/分支切换自动还原。**零宿主代码改动：原版快照 + 本插件即可用**，同时兼容契约线宿主（自动探测选择）
 - **动作上下文插件本地化**：`GenuiActionContext`/`useGenuiAction` 不再依赖宿主导出（原版无此导出）——宿主提供时沿用宿主上下文实例（MarkdownText 注入的 sendGenuiAction 无缝到达），否则回退插件本地上下文；DOM 通道以 `ctx.sessions.scope().get('conversation').send()` 转发 `[genui-action]`（与宿主版消息模板逐字一致）

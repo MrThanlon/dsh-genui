@@ -14,7 +14,7 @@
  *                        [--tarball <路径> --tarball-sha256 <sha>] [--smoke]
  *
  *   --install link    （默认）装当前工作区，测的就是当前代码
- *   --install git     从私有 git URL 安装
+ *   --install git     从 git URL 安装（私有仓库，需已 gh 登录）
  *   --install tarball 必须给 --tarball 绝对路径与 --tarball-sha256（防假安装）
  *   --smoke           不要求模型 Key：安装 → 启动 → 首页/client.js 200 →
  *                     无页面异常 → 插件 boot；不跑模型链路
@@ -107,7 +107,7 @@ try {
   // ── 安装插件 ────────────────────────────────────────────────────────────
   if (INSTALL === 'git') {
     log('安装插件（git+https，私有仓库）...')
-    const r = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', 'git+https://github.com/dsh-external/dsh-genui.git'], { env, stdio: 'inherit' })
+    const r = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', 'git+https://github.com/taekchef/dsh-genui.git'], { env, stdio: 'inherit' })
     if (r.status !== 0) fail('git URL 安装失败（见上方输出）')
   } else if (INSTALL === 'tarball') {
     log(`安装插件（tarball ${TARBALL}）...`)
