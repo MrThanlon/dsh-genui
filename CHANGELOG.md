@@ -19,6 +19,7 @@
 - **tsconfig 宿主类型路径**：`dsh-invariants` → `packages/runtime-diagnostics/invariants`，ui-slash 类型路径 → `packages/client/ui-input-trigger`
 
 ### 修复
+- **mermaid 管道边标签含方括号解析失败**：`-->|文本 [x]|` 的 `[` `]` 会被当节点语法 → Parse error → 降级显示源码（实测案例 `-->|6. 用户交互 → [genui-action]|`）。`repairMermaidSource` 新增 pipe 标签掩码 + 引号化（`|"文本 [x]"|`，渲染时不显示引号）；已引号、无方括号、节点标签内的管道字符均不受影响
 
 
 ## [0.7.0] - 2026-08-13

@@ -43,6 +43,14 @@ export function assertSafeSvg(svg: string): void {
  * placeholder before quoting and restored verbatim afterwards, so the quote
  * pass can neither corrupt it nor be thrown off by inserted quotes
  * elsewhere on the line.
+ *
+ * Pipe-style edge labels (`-->|文本|`) are the opposite: an UNQUOTED pipe
+ * label containing `[` or `]` breaks the parser ("Parse error", observed
+ * live with `-->|6. 用户交互 → [genui-action]|`) because the brackets are
+ * node grammar. Quoting the label text is display-neutral (mermaid renders
+ * `-->|"文本"|` without the quotes) and parses. These spans are masked too,
+ * so the node-label quote pass below cannot reach inside them and produce
+ * nested quotes, and restored last.
  */
 export function repairMermaidSource(code: string): string {
   const kind = /^([A-Za-z]+)/.exec(code.trim())?.[1] ?? ''
@@ -58,7 +66,20 @@ export function repairMermaidSource(code: string): string {
     spans.push(span)
     return `\uE000${spans.length - 1}\uE001`
   })
-  const quoted = masked.replace(
+  // Pipe label spans whose text carries at least one bracket char. The
+  // bracket requirement keeps legitimate pipe characters inside node labels
+  // (e.g. `A[a | b | c]`) untouched. Already-quoted labels (any `"` in the
+  // text) are left alone. The placeholder must be bracket-free so the
+  // node-label quote pass below cannot match inside it.
+  const PIPE = /\|([^|\n]*[\[\]][^|\n]*)\|/g
+  const pipeSpans: string[] = []
+  const maskedPipes = masked.replace(PIPE, (whole, text: string) => {
+    const trimmed = text.trim()
+    if (trimmed.includes('"')) return whole
+    pipeSpans.push(trimmed)
+    return `\uE002${pipeSpans.length - 1}\uE003`
+  })
+  const quoted = maskedPipes.replace(
     /([\[\(])([^\[\]\(\)\{\}"'\n]*)([\]\)])/g,
     (whole, open: string, label: string, close: string) => {
       const trimmed = label.trim()
@@ -69,5 +90,10 @@ export function repairMermaidSource(code: string): string {
       return whole
     },
   )
-  return quoted.replace(/\uE000(\d+)\uE001/g, (whole, i: string) => spans[Number(i)] ?? whole)
+  return quoted
+    .replace(/\uE000(\d+)\uE001/g, (whole, i: string) => spans[Number(i)] ?? whole)
+    .replace(/\uE002(\d+)\uE003/g, (whole, i: string) => {
+      const text = pipeSpans[Number(i)]
+      return text === undefined ? whole : `|"${text}"|`
+    })
 }

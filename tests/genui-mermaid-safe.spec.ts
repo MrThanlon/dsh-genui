@@ -93,4 +93,43 @@ describe('repairMermaidSource', () => {
     const src = 'graph TD\nA -- 能 --> B -- 不能 --> C'
     expect(repairMermaidSource(src)).toBe(src)
   })
+
+  it('quotes pipe edge labels containing brackets (the [genui-action] live failure)', () => {
+    const src = 'flowchart LR\nUI -->|6. 用户交互 → [genui-action]| M'
+    const repaired = repairMermaidSource(src)
+    expect(repaired).toContain('|"6. 用户交互 → [genui-action]"|')
+    expect(repaired).not.toContain('→ ["genui-action"]')
+  })
+
+  it('never double-quotes a bracket inside a pipe label', () => {
+    const src = 'flowchart LR\nA -->|步骤 [第 2 步] 完成| B'
+    const repaired = repairMermaidSource(src)
+    expect(repaired).toContain('|"步骤 [第 2 步] 完成"|')
+    expect(repaired).not.toContain('["第 2 步"]')
+  })
+
+  it('leaves bracket-free pipe labels alone', () => {
+    const src = 'flowchart LR\nA -->|1. 输出 fence 文本| B'
+    expect(repairMermaidSource(src)).toBe(src)
+  })
+
+  it('leaves already-quoted pipe labels alone', () => {
+    const src = 'flowchart LR\nUI -->|"6. 用户交互 → [genui-action]"| M'
+    expect(repairMermaidSource(src)).toBe(src)
+  })
+
+  it('does not touch pipe characters inside node labels', () => {
+    const src = 'graph LR\nA[a | b | c] --> B[plain]'
+    const repaired = repairMermaidSource(src)
+    expect(repaired).toContain('A["a | b | c"]')
+    expect(repaired).toContain('B[plain]')
+  })
+
+  it('quotes pipe labels with brackets while CJK node labels on the same line are quoted too', () => {
+    const src = 'flowchart LR\nA[模型] -->|输出 [spec]| B[渲染]'
+    const repaired = repairMermaidSource(src)
+    expect(repaired).toContain('A["模型"]')
+    expect(repaired).toContain('|"输出 [spec]"|')
+    expect(repaired).toContain('B["渲染"]')
+  })
 })
