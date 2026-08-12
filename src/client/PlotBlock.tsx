@@ -37,8 +37,20 @@ export interface PlotSeries {
   params?: PlotSeriesParam[] | undefined
 }
 
-/** Categorical palette for multi-series plots (muted, dark-theme friendly). */
-export const PLOT_COLORS = ['#4f8ef7', '#3ecf8e', '#e0a458', '#e07b6a', '#9a86d8', '#5cb8b8', '#d487b6', '#8aaa6e']
+/** Categorical palette for multi-series plots: host static tokens only
+ * (design system v2 — same families as the chart/avatar palettes in
+ * GenuiBlock, no off-theme hexes). CSS custom properties resolve inside
+ * inline `style` on SVG strokes and legend swatches. */
+export const PLOT_COLORS = [
+  'var(--dsw-static-deepseek-400)',
+  'var(--dsw-static-green-400)',
+  'var(--dsw-static-amber-400)',
+  'var(--dsw-static-red-400)',
+  'var(--dsw-static-blue-450)',
+  'var(--dsw-static-deepseek-450)',
+  'var(--dsw-static-neutral-bluish-400)',
+  'var(--dsw-static-deepseek-300)',
+]
 
 /** Series color: explicit wins; multi-series auto-assign from the palette. */
 const seriesColor = (i: number, n: number, c?: string): string | undefined =>

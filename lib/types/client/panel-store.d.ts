@@ -61,7 +61,11 @@ export declare function applyPanelOperation(sessionId: string, op: PanelOperatio
  * into the override as usual.
  */
 export declare function setLocalPanel(sessionId: string, spec: GenuiSpec | null): void;
-/** Tear down a session's panel state (session destroy / hard clear). */
+/** Log one budget-overflow diagnostic per source (replays stay silent). */
+export declare function diagnosePanelBudget(sessionId: string, sourceId: string): void;
+/** Tear down a session's panel state (session destroy / hard clear). Also
+ * drops the session's expand token and overflow diagnostics, so a long-lived
+ * app never accumulates per-session state for closed sessions. */
 export declare function clearSessionPanel(sessionId: string): void;
 /** Current folded spec for a session (useSyncExternalStore getSnapshot). */
 export declare function getPanelSpec(sessionId: string): GenuiSpec | null;

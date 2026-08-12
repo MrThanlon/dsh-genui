@@ -27,9 +27,11 @@ for (const entry of Object.values(pkgJson.exports)) {
   }
 }
 
-// Everything the loader / installer / TS consumers resolve.
+// Everything the loader / installer / TS consumers resolve — plus the lazy
+// engine assets the node-half route serves to the browser on demand.
 const required = [
   'package.json', 'LICENSE', 'SKILL.md', 'README.md', 'CHANGELOG.md', 'demo-prompts.md', 'cordis.patch.yml',
+  'lib/assets/mermaid.js', 'lib/assets/three.js',
   ...exportTargets,
 ]
 

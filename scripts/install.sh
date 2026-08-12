@@ -26,37 +26,28 @@ fi
 REPO_URL="git+https://github.com/dsh-external/dsh-genui.git"
 GIT_URL="https://github.com/dsh-external/dsh-genui.git"
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
+# Web 会话的 skill 服务从 agentsHome（默认 ~/.agents）发现技能，dshHome 的
+# ~/.dsh/skills 在部分宿主演进中不再进入会话目录 —— 两个根都同步，模型从哪
+# 个根读都能拿到 genui skill。
+AGENTS_HOME="${AGENTS_HOME:-$HOME/.agents}"
 RED='\033[31m'; GREEN='\033[32m'; YELLOW='\033[33m'; BOLD='\033[1m'; NC='\033[0m'
 
 fail() { printf "${RED}✗ %s${NC}\n" "$1"; exit 1; }
 ok()   { printf "${GREEN}✓ %s${NC}\n" "$1"; }
 warn() { printf "${YELLOW}! %s${NC}\n" "$1"; }
 
-# ── skill 同步：模型读的是 ~/.dsh/skills/genui/SKILL.md，不是仓库那份 ──
+# ── skill 同步：模型从技能根读 SKILL.md，不是仓库那份 ──
 # 从已安装的包内解析 SKILL.md（成员机器是 git 安装；开发机 link 安装会解析
-# 到本地 checkout）。目标按六类状态处理，任何情况下都不跟随写入别人的文件：
+# 到本地 checkout）。目标按七类状态处理，任何情况下都不跟随写入别人的文件：
 #   不存在 / 普通文件  → 同目录临时文件 + 原子 mv（创建或替换）
 #   符号链接指向同一文件 → 成功跳过，不改链接（开发机 ln -s 场景）
 #   符号链接指向其他文件 → 安全失败，显示目标
 #   悬空符号链接        → 安全失败
 #   目录               → 安全失败
-sync_skill() {
-  echo "同步 genui skill 到 \$DSH_HOME/skills/genui ..."
-  # 用户可控路径经环境变量传给 node，绝不插进 -e 字符串（防注入）。
-  # 先 cd 到中性目录再解析：在插件 checkout 里跑脚本时，node 的
-  # self-reference 会把包名解析回当前仓库，必须避开。
-  mkdir -p "$DSH_HOME"
-  SKILL_FILE=$(cd "$DSH_HOME" && DSH_HOME="$DSH_HOME" PROFILE="$PROFILE" node -e "
-const path = require('path')
-try {
-  const pkg = require.resolve('@deepseek-ai/dsh-genui/package.json', { paths: [process.env.DSH_HOME + '/profiles/' + process.env.PROFILE] })
-  console.log(path.join(path.dirname(pkg), 'SKILL.md'))
-} catch { process.exit(1) }
-" 2>/dev/null || true)
-  if [ -z "$SKILL_FILE" ] || [ ! -f "$SKILL_FILE" ]; then
-    fail "无法定位已安装包内的 SKILL.md —— 安装不完整，请先修复插件安装再重试。"
-  fi
-  DEST="$DSH_HOME/skills/genui/SKILL.md"
+sync_skill_to() {
+  SKILL_FILE="$1"
+  DEST="$2"
+  DEST_LABEL="$3"
 
   # 符号链接判定（readlink 解析一次；相对目标按链接所在目录展开）
   if [ -L "$DEST" ]; then
@@ -71,7 +62,7 @@ try {
       ( cd "$(dirname "$1")" 2>/dev/null && printf '%s/%s\n' "$(pwd -P)" "$(basename "$1")" ) || printf '%s\n' "$1"
     }
     if [ "$RESOLVED" = "$SKILL_FILE" ] || [ "$(canonical "$RESOLVED")" = "$(canonical "$SKILL_FILE")" ]; then
-      ok "skill 已是最新（符号链接指向同一文件）"
+      ok "skill 已是最新（$DEST_LABEL 符号链接指向同一文件）"
       return 0
     fi
     if [ -e "$RESOLVED" ] || [ -L "$RESOLVED" ]; then
@@ -90,7 +81,28 @@ try {
   cp "$SKILL_FILE" "$TMP_FILE"
   mv "$TMP_FILE" "$DEST"
   trap - EXIT HUP INT TERM
-  ok "skill 已同步（$SKILL_FILE）"
+  ok "skill 已同步到 $DEST_LABEL（$SKILL_FILE）"
+}
+
+sync_skill() {
+  echo "同步 genui skill ..."
+  # 用户可控路径经环境变量传给 node，绝不插进 -e 字符串（防注入）。
+  # 先 cd 到中性目录再解析：在插件 checkout 里跑脚本时，node 的
+  # self-reference 会把包名解析回当前仓库，必须避开。
+  mkdir -p "$DSH_HOME"
+  SKILL_FILE=$(cd "$DSH_HOME" && DSH_HOME="$DSH_HOME" PROFILE="$PROFILE" node -e "
+const path = require('path')
+try {
+  const pkg = require.resolve('@deepseek-ai/dsh-genui/package.json', { paths: [process.env.DSH_HOME + '/profiles/' + process.env.PROFILE] })
+  console.log(path.join(path.dirname(pkg), 'SKILL.md'))
+} catch { process.exit(1) }
+" 2>/dev/null || true)
+  if [ -z "$SKILL_FILE" ] || [ ! -f "$SKILL_FILE" ]; then
+    fail "无法定位已安装包内的 SKILL.md —— 安装不完整，请先修复插件安装再重试。"
+  fi
+
+  sync_skill_to "$SKILL_FILE" "$DSH_HOME/skills/genui/SKILL.md" "DSH_HOME/skills/genui"
+  sync_skill_to "$SKILL_FILE" "$AGENTS_HOME/skills/genui/SKILL.md" "AGENTS_HOME/skills/genui"
 }
 
 echo "${BOLD}== dsh-genui 安装（profile: $PROFILE）==${NC}"

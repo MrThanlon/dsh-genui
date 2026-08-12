@@ -113,6 +113,17 @@ export interface GenuiSelect {
   options: string[]
   /** v2: when set, interaction sends this action back to the model. */
   action?: string
+  /**
+   * v2.8: default-selected option index (a placeholder option shows instead
+   * when absent, so nothing is silently pre-registered).
+   */
+  selected?: number
+  /**
+   * v2.8: stable field id — the chosen option persists across refresh and is
+   * collected by a sibling `submit` node (`fields: {id: value}`), like
+   * input/textarea ids.
+   */
+  id?: string
 }
 
 export interface GenuiCheckbox {
@@ -126,6 +137,12 @@ export interface GenuiCheckbox {
 export interface GenuiLink {
   type: 'link'
   label: string
+  /**
+   * Optional http(s)/mailto target. With `href` the node renders a REAL
+   * anchor (target=_blank + noopener); without it the node renders as plain
+   * styled text — never a dead clickable-looking control.
+   */
+  href?: string
 }
 
 export interface GenuiBadge {

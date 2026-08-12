@@ -227,10 +227,32 @@ export function setLocalPanel(sessionId: string, spec: GenuiSpec | null): void {
   for (const fn of listeners) fn()
 }
 
-/** Tear down a session's panel state (session destroy / hard clear). */
+/** One diagnostic per over-budget source (replays stay silent). */
+const diagnosedOverflow = new Set<string>()
+
+/** Log one budget-overflow diagnostic per source (replays stay silent). */
+export function diagnosePanelBudget(sessionId: string, sourceId: string): void {
+  const key = `${sessionId}\u0000${sourceId}`
+  if (diagnosedOverflow.has(key)) return
+  diagnosedOverflow.add(key)
+  console.warn(
+    `[genui] 面板已到节点/操作上限（${limits.maxNodes} 节点、${limits.maxAppends} 条追加），本次 append 被拒绝；请让模型发送 replace 更新面板。`,
+  )
+}
+
+/** Tear down a session's panel state (session destroy / hard clear). Also
+ * drops the session's expand token and overflow diagnostics, so a long-lived
+ * app never accumulates per-session state for closed sessions. */
 export function clearSessionPanel(sessionId: string): void {
-  if (!sessions.delete(sessionId)) return
+  const had = sessions.delete(sessionId)
+  const hadToken = expandTokens.delete(sessionId)
+  const prefix = `${sessionId}\u0000`
+  for (const key of diagnosedOverflow) {
+    if (key.startsWith(prefix)) diagnosedOverflow.delete(key)
+  }
+  if (!had && !hadToken) return
   for (const fn of listeners) fn()
+  for (const fn of expandListeners) fn()
 }
 
 /* ---------------- reads / subscription ---------------- */

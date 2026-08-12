@@ -124,13 +124,15 @@ dsh plugin --profile web add link:$PWD
 
 模型把界面描述写成 JSON 放进 `dsh-ui` 围栏，浏览器端渲染器（`src/client`）通过主仓 `fence-registry` 接口认领这门语言并渲染。组件是白名单的，模型塞不进 HTML/脚本；函数表达式走独立解析器，不用 eval。
 
+主渲染包保持轻量（≈110 KB min / 28 KB gzip），mermaid 与 three.js 引擎单独打包为按需资产（首次用到时经插件自注册的 HTTP 路由加载），启动时只下载渲染核心。
+
 ## ❓ 常见问题
 
 - **显示成代码块？** 查三处：dsh 版本带 fence-registry（见顶部「版本要求」，旧版会不渲染）、`dsh plugin --profile web list` 里有本插件、重启 + 硬刷新。
 - **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧——先更新 dsh 再重装插件，见顶部「版本要求」。
 - **`dsh: pnpm not found on PATH`？** 装 pnpm 后**新开终端**再试（`corepack enable` 或 `npm i -g pnpm`）。
 - **安装时卡在 git 凭据/404？** 仓库在私有组织，先 `gh auth login`，再用 git URL 方式安装。
-- **装了但 scene3d/mermaid 不渲染？** 渲染器与图表引擎已内联进 client.js，无需额外依赖——先重启 dsh web + 硬刷新（Cmd+Shift+R）；仍不渲染就卸掉重装（`dsh plugin --profile web remove @deepseek-ai/dsh-genui` 后再 add）。
+- **装了但 scene3d/mermaid 不渲染？** 引擎（mermaid / three）不再内联进 client.js——它们在首次用到时按需加载（`/plugins/@deepseek-ai/dsh-genui/assets/*.js`，插件自带 HTTP 路由托管）。先重启 dsh web + 硬刷新（Cmd+Shift+R）；仍不渲染就卸掉重装（`dsh plugin --profile web remove @deepseek-ai/dsh-genui` 后再 add）。旧版宿主缺少资产路由时会降级显示源码/加载失败提示，更新 dsh 即可。
 - **模型不主动输出？** 重启后新会话生效；或直接说"用 dsh-ui 输出"。
 - **clone 后没有 lib/？** `pnpm install && pnpm run check` 自己构建。
 

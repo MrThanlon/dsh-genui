@@ -186,3 +186,40 @@ describe('validateGenuiSpec: diagnostics', () => {
     expect(result.errors.join('\n')).toContain("unknown type 'my-widget'")
   })
 })
+
+describe('repairGenuiSpec: color field whitelist (CSS injection channel)', () => {
+  it('keeps hex / rgb / hsl / host-token colors', () => {
+    const spec = repairGenuiSpec({
+      items: [
+        { type: 'avatar', name: 'A', color: '#4f8ef7' },
+        { type: 'chart', data: [{ label: 'x', value: 1, color: 'rgb(10, 20, 30)' }] },
+        { type: 'chart', data: [{ label: 'y', value: 2, color: 'var(--dsw-static-green-400)' }] },
+        { type: 'scene3d', meshes: [{ shape: 'box', color: 'hsl(210 50% 40%)' }], background: '#101418' },
+      ],
+    })
+    expect(spec?.items[0]).toMatchObject({ color: '#4f8ef7' })
+    const chart1 = spec!.items[1] as { data: Array<{ color?: string }> }
+    expect(chart1.data[0]!.color).toBe('rgb(10, 20, 30)')
+    const chart2 = spec!.items[2] as { data: Array<{ color?: string }> }
+    expect(chart2.data[0]!.color).toBe('var(--dsw-static-green-400)')
+    expect(spec?.items[3]).toMatchObject({ background: '#101418' })
+  })
+
+  it('drops url()/javascript:/garbage values (degrade to default palette)', () => {
+    const spec = repairGenuiSpec({
+      items: [
+        { type: 'avatar', name: 'A', color: 'url(https://evil.example/track?u=1)' },
+        { type: 'chart', data: [{ label: 'x', value: 1, color: 'javascript:alert(1)' }] },
+        { type: 'plot', series: [{ expr: 'x', color: 'expression(alert(1))' }] },
+        { type: 'scene3d', meshes: [{ shape: 'box', color: 'not-a-color' }] },
+      ],
+    })
+    expect(spec?.items[0]).toEqual({ type: 'avatar', name: 'A' })
+    const chart = spec!.items[1] as { data: Array<{ color?: string }> }
+    expect(chart.data[0]!.color).toBeUndefined()
+    const plot = spec!.items[2] as { series: Array<{ color?: string }> }
+    expect(plot.series[0]!.color).toBeUndefined()
+    const scene = spec!.items[3] as { meshes: Array<{ color?: string }> }
+    expect(scene.meshes[0]!.color).toBeUndefined()
+  })
+})

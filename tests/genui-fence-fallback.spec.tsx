@@ -68,15 +68,66 @@ describe('fence fallback diagnostics', () => {
   })
 })
 
-describe('spec issue notes (parseable but structurally invalid)', () => {
-  it('shows an amber note listing healed defects', () => {
+describe('tier-2 structural repair (settled messages only)', () => {
+  // The rows array is closed with `}` instead of `]` — ending `"1"]}]}]}`
+  // where `"1"]]}]}` was meant. The stray `}` lands BEFORE the table
+  // object's own `}`, so the partial parser has no recoverable prefix
+  // (it breaks on the mismatch and never sees the table's `}`): tier-2 must
+  // skip the mismatched closer and render the repaired spec — no banner.
+  const STRAY_CLOSER =
+    '{"title":"x","items":[{"type":"table","columns":["a"],"rows":[["1"]}]}]}]}'
+  // A missing closer (plain truncation): tier-2 appends the missing `]` `}`.
+  const MISSING_CLOSER =
+    '{"title":"x","items":[{"type":"text","content":"半截'
+
+  it('repairs a mismatched closer once settled', () => {
+    render(<div>{renderGenuiFence(STRAY_CLOSER, 't1', { source: { id: 's', order: [1, 0, 0] } })}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    // The repaired table renders silently — no amber note.
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(document.body.textContent).toContain('1')
+  })
+
+  it('repairs a missing closer once settled', () => {
+    render(<div>{renderGenuiFence(MISSING_CLOSER, 't2', { source: { id: 's', order: [1, 0, 0] } })}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(document.body.textContent).toContain('半截')
+  })
+
+  it('never applies structural repair while streaming', () => {
+    render(<div data-streaming="true">{renderGenuiFence(STRAY_CLOSER, 't3')}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(document.body.textContent).toContain('rows')
+  })
+
+  // The exact real-world failure that motivated this repair: a long table
+  // spec whose rows-array close `]` was emitted as `}` (ending `"]}]}]}`
+  // instead of `"]]}]}`). Parse error at the stray `}` (position 649 in the
+  // original). Partial parsing cannot recover (the mismatch precedes the
+  // table object's own `}`) — only tier-2's skip-the-mismatch can.
+  const REAL_WORLD =
+    '{"title":"DSH 侧可复用缝隙","gap":10,"items":[{"type":"table","columns":["缝隙","作用","recap 用法"],"rows":[["ctx.llm","provider 中立 LLM 流式服务","recap 生成调用（compact-basic / dsh-rewind 同款）"],["ctx.commands","人类直接命令注册（/compact 模式）","注册 /recap，直接执行、零模型轮询"],["session 事件流","append-only 事件源（user/message、tool/result、request/header…）","recap 从事件流折叠来源 + 追加 log-only session/recap 事件"],["ctx.sessionTitle","异步 LLM 会话元数据模板","复制它的 get/refresh/register 服务形态"],["ctx.sessionProjections + Cache","状态驱动折叠单元，持久化缓存供 GUI 冷读","把 recap 注册为投影单元，GUI 免读全量日志"],["ctx.sessionQuery","会话读取/搜索","recap 历史检索"],["client-modules","dsh.client 声明 + /plugins/<id>/client.js","Web UI 渲染 recap 卡片"]}]}]}'
+
+  it('repairs the real-world mismatched rows close', () => {
+    render(<div>{renderGenuiFence(REAL_WORLD, 't4', { source: { id: 's', order: [1, 0, 0] } })}</div>)
+    expect(screen.queryByRole('alert')).toBeNull()
+    expect(screen.queryByRole('note')).toBeNull()
+    // The repaired table renders all seven rows.
+    expect(document.body.textContent).toContain('ctx.sessionQuery')
+    expect(document.body.textContent).toContain('Web UI 渲染 recap 卡片')
+  })
+})
+
+describe('spec healing (parseable but structurally invalid)', () => {
+  it('heals defects silently and renders the UI', () => {
     render(<div>{renderGenuiFence(
       '{"title":"x","items":[{"type":"table","columns":["a"],"rows":[["1"]]},[],["callout","info","已排除","x"],{"type":"button","label":"ok","action":"a"}]}',
       's1',
     )}</div>)
-    const note = screen.getByRole('note')
-    expect(note.textContent).toContain('items[1]')
-    expect(note.textContent).toContain('items[2]')
+    // Healed nodes are dropped without any amber note.
+    expect(screen.queryByRole('note')).toBeNull()
     // The repaired UI still renders.
     expect(document.body.textContent).toContain('ok')
   })
@@ -104,9 +155,8 @@ describe('automatic quote-escape repair', () => {
     expect(screen.queryByRole('alert')).toBeNull()
     // The repaired spec renders as real UI (not a raw code block).
     expect(document.body.textContent).toContain('判定失败')
-    // An amber note explains the auto-repair.
-    const note = screen.getByRole('note')
-    expect(note.textContent).toContain('已自动修复')
+    // The auto-repair stays silent.
+    expect(screen.queryByRole('note')).toBeNull()
   })
 
   it('keeps the raw body as a code block when repair cannot succeed', () => {
@@ -130,7 +180,7 @@ describe('automatic quote-escape repair', () => {
     render(<div>{renderGenuiFence(MULTI, 'r4')}</div>)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(document.body.textContent).toContain('走了')
-    expect(screen.getByRole('note').textContent).toMatch(/已自动修复 \d+ 处/)
+    expect(screen.queryByRole('note')).toBeNull()
   })
 
   it('heals the real-world failure: a table whose cells contain ASCII-quoted Chinese', () => {
@@ -146,7 +196,7 @@ describe('automatic quote-escape repair', () => {
     expect(document.body.textContent).toContain('别名路径')
     expect(document.body.textContent).toContain('空环境')
     expect(document.body.textContent).toContain('acp-snapshot')
-    expect(screen.getByRole('note').textContent).toMatch(/已自动修复 \d+ 处/)
+    expect(screen.queryByRole('note')).toBeNull()
   })
 
   it('drops trailing commas (tier-1, safe at any time)', () => {
@@ -186,6 +236,6 @@ describe('automatic quote-escape repair', () => {
     render(<div>{renderGenuiFence(CUT, 'r10', { sessionId: 's', source: { id: 'x', order: [1, 0, 0] } })}</div>)
     expect(screen.queryByRole('alert')).toBeNull()
     expect(document.body.textContent).toContain('没闭合')
-    expect(screen.getByRole('note').textContent).toMatch(/已自动补全 \d+ 处/)
+    expect(screen.queryByRole('note')).toBeNull()
   })
 })

@@ -23,3 +23,5 @@ import type { ToolDefinition } from '@deepseek-ai/dsh-tools';
  * `ctx.tools.register` consumes it exactly like a `defineTool` result.
  */
 export declare function createRenderUiTool(): ToolDefinition;
+/** Build the validate_dsh_ui tool definition (registered alongside render_ui). */
+export declare function createValidateDshUiTool(): ToolDefinition;

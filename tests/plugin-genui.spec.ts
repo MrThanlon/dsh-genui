@@ -44,8 +44,9 @@ describe('genui:fence section', () => {
     const registered: unknown[] = []
     ctx.provide('tools', { register: (tool: unknown) => { registered.push(tool) } })
     await ctx.plugin(GenUI)
-    expect(registered).toHaveLength(1)
-    expect((registered[0] as { name: string }).name).toBe('render_ui')
+    expect(registered).toHaveLength(2)
+    const names = registered.map(t => (t as { name: string }).name).sort()
+    expect(names).toEqual(['render_ui', 'validate_dsh_ui'])
   })
 
   it('registers render_ui when tools binds AFTER the plugin (start-up ordering)', async () => {
@@ -59,8 +60,9 @@ describe('genui:fence section', () => {
     await ctx.plugin(GenUI) // plugin first — tools not yet provided
     const registered: unknown[] = []
     ctx.provide('tools', { register: (tool: unknown) => { registered.push(tool) } })
-    expect(registered).toHaveLength(1)
-    expect((registered[0] as { name: string }).name).toBe('render_ui')
+    expect(registered).toHaveLength(2)
+    const names = registered.map(t => (t as { name: string }).name).sort()
+    expect(names).toEqual(['render_ui', 'validate_dsh_ui'])
   })
 
   it('keeps the fence channel without a tools service', async () => {

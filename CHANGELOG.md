@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.6.0] - 2026-08-13
+### 修复
+- **SKILL.md frontmatter 从安装起就解析失败**：description 里含 `: ` 序列（`charts: callouts`、`prose: 要点`），被宿主 yaml 解析器判为紧凑嵌套映射 → 技能被 skill-local 静默忽略 → 会话技能目录从不显示 genui、`skill` 工具一直报 "unknown or no longer available"。修复：description 加 YAML 双引号。技能目录是每步活刷新的（digest 机制），修复即刻生效无需重启。新增 `tests/skill-md.spec.ts` 用宿主同款 yaml 解析器钉住 frontmatter，杜绝静默回归。UI 围栏此前一直正常是因为它走系统提示词注入通道（genui:fence section），与技能目录是两条独立通道
+- install.sh 技能同步改为双根（`$DSH_HOME/skills` + `$AGENTS_HOME/skills`，AGENTS_HOME 默认 `~/.agents`），沿用七类目标状态安全判定；新增对应测试
+
+### 新增
+- **客户端分包（体积 -98%）**：mermaid 与 three.js 引擎不再内联进 client.js——它们单独构建为 `lib/assets/mermaid.js` / `lib/assets/three.js` IIFE（各自注册到 `window.__GenuiAssets__`），首次用到时按需加载；插件 node 端经可选探针（同 tools 注册模式）向宿主 webserver 注册自有资产路由 `/plugins/<id>/assets/*`（最长前缀胜过通用 `/plugins` 路由，无需改宿主源码；文件名白名单 + 无路径穿越）。全部浏览器产物开启 minify（宿主无 gzip）。client.js：9.04 MB → 109 KB（gzip 1.72 MB → 28 KB）；mermaid 资产 3.4 MB / three 资产 700 KB 仅按需下载。旧宿主无资产路由时优雅降级（mermaid 显示源码、scene3d 显示加载失败）
+- **系统提示词瘦身（-47%）**：注入每个会话的组件目录从 10,928 字符压到 5,823（去重 radio 行、低频组件并行为一行、规则合并；全部 38 个 type 与关键字段保留，次要字段经实测后补回内联——skill 指针只作增益、不再是负载点）
+- **select 补齐表单语义**：新增 `id`（跨刷新持久化 + 进 submit `fields` 收集）与 `selected`（预选下标；缺省显示「请选择…」占位，不静默预选第一项）；action payload 带 `id`
+- **link 诚实渲染**：新增白名单 `href`（仅 http(s)/mailto）渲染为真实锚点（target=_blank + noopener）；无 href 渲染为纯文本样式——消灭「假按钮」同类问题
+- **file-tree 本地折叠**：目录行可点击折叠/展开（aria-expanded、零模型往返），兑现 spec 文档承诺
+- **input/textarea 防空提交**：blur 仅当值自上次投递后变化才发 action（聚焦即离开不再产生空往返）；action payload 附带字段 `id` 帮助模型定位
+
+### 修改
+- **流式重渲染削减**：GenuiBlock memo 增加结构相等比较器——流式 chunk 重解析产生的「内容未变的新对象」不再触发整树重渲染（≤200 节点围栏流式期间最多一次实质性渲染）
+- **会话内存清理**：dock 组件卸载（宿主剪除会话 scope）时清空该会话的面板快照/操作表/溢出诊断/展开令牌，长期运行不再按会话数增长
+- **负值图表钳制**：柱状/分组柱负值渲染零高柱（数值标注照显）、环图负值记零弧（此前非法 strokeDasharray 画出整圆）；line 正常画负区间
+- **mermaid 主题跟随宿主**：按 `document.documentElement.style.colorScheme` 选 dark/neutral，浅色主题不再显示深色图
+- **scene3d 容器自适应**：ResizeObserver 同步面板/窗口尺寸变化，事件驱动渲染（静止零开销）不变
+- **调色板令牌迁移收尾**：PlotBlock 系列色从 v1 硬编码 hex 迁到宿主 `--dsw-static-*` 令牌（设计 v2 漏掉的一处）
+- **节点计数统一**：render_ui / validate_dsh_ui 的「N 个组件」改走 guard 共享遍历（tabs/accordion/file-tree 子节点计入，与面板折叠一致）
+- **括号诊断方向修正**：validate_dsh_ui 的括号计数提示按差值符号说「缺/多」（此前一律说「多」）
+
+### 安全
+- **颜色字段格式白名单**：avatar/chart/plot/mesh/scene 背景的 `color` 只接受 hex/rgb/hsl/`var(--dsw-*)`——`url(...)`、`javascript:` 等任意 CSS 值被丢弃并降级默认调色板（堵住经背景图外带数据的通道）
+
+### 测试
+- 新增 24 项测试（315 全绿）：memo 比较器、select 三态（占位/预选/收集）、link 锚点与降级、file-tree 折叠、负值图表、blur 防空提交（input/textarea/Enter 路径）、颜色白名单、括号诊断方向、tabs 内节点计数、面板会话清理、asset-loader（rev 解析/记忆化/失败路径）
+
+## [Unreleased]
+### 新增
+- 新增 validate_dsh_ui 工具：模型发出 ```dsh-ui 围栏前可先调用它验证 JSON（纯本地，零 LLM/网络）；失败时返回精确位置、括号计数诊断与常见原因，修正后重验再发——从源头把坏围栏挡在渲染之前。SKILL.md 规则 11 + 宿主 Rules 同步提示：≥3 个组件或含 table 的复杂 UI 先验后发，简单 UI 不必（避免每 UI 一次往返的开销）
+### 修复
+- dsh-ui 围栏 Tier-2 结构修复盲区：此前只「追加缺失的闭合符」，遇到错位/多余闭合符（典型如行数组的 `]` 被写成 `}`，收尾 `"]}]}]}`）会原样保留、修复失败并弹红色解析失败横幅；现在跳过与开放栈不匹配的闭合符，仅当整体可解析时采纳。新增回归测试（含真实 654 字符坏样本）
+- dsh-ui 围栏修复后静默渲染：Tier-1/Tier-2 或 guard 修复成功并渲染后，不再显示黄色「已自动补全/已修复」提示（用户只应看到正确的 UI 或红色报错横幅，不需要被告知补全过程）
+
 ## [0.5.1] - 2026-08-12
 ### 修复
 - mermaid 图渲染：修复渲染容器游离导致 flowchart/graph 必然降级的问题——mermaid ≥ 11.16 绘制流程图时经 `document.body` 查找图元素，游离容器渲染必抛 TypeError。临时容器改为离屏挂载到 DOM（不可用 `display:none`，会破坏 dagre 文本测量）；标签自动修复不再给边标签加引号（此前 `H -- 否(流式中) --> J` 会被改坏为 `H -- 否("流式中") --> J`，修复后反而解析失败）

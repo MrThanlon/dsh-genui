@@ -8,7 +8,7 @@ import { renderGenuiFence } from '../src/client/index.tsx'
 import { repairGenuiSpec } from '../src/client/guard.ts'
 import { GenuiPanel } from '../src/client/panel.tsx'
 import {
-  applyPanelOperation, clearSessionPanel, getPanelSpec, setLocalPanel, setPanelLimits, subscribePanel,
+  applyPanelOperation, clearSessionPanel, getPanelExpandToken, getPanelSpec, requestPanelExpand, setLocalPanel, setPanelLimits, subscribePanel,
 } from '../src/client/panel-store.ts'
 import { GenuiToolView } from '../src/client/toolview.tsx'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
@@ -522,5 +522,15 @@ describe('settled-fence publisher (host fence-source contract)', () => {
     expect(warn).toHaveBeenCalledTimes(1)
     warn.mockRestore()
     setPanelLimits({ maxNodes: 200 })
+  })
+})
+
+describe('session teardown hygiene', () => {
+  it('clearSessionPanel also drops the expand token and overflow diagnostics', () => {
+    requestPanelExpand('s1')
+    expect(getPanelExpandToken('s1')).toBe(1)
+    clearSessionPanel('s1')
+    expect(getPanelExpandToken('s1')).toBe(0)
+    expect(getPanelSpec('s1')).toBeNull()
   })
 })

@@ -13,80 +13,130 @@
 import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
-import { createRenderUiTool } from './tool.ts'
+import type { IncomingMessage, ServerResponse } from 'node:http'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { createRenderUiTool, createValidateDshUiTool } from './tool.ts'
 
 /** Convention: tool guidance uses 100–199; bash's section is 104. */
 export const GENUI_SECTION_ORDER = 105
 
+/* ---------------- lazy engine asset route ---------------- */
+
+/**
+ * The mermaid/three engines ship as standalone IIFE bundles under
+ * `lib/assets/` and are fetched by the client ONLY when a spec needs them.
+ * This route serves them from the plugin's own package directory through the
+ * host webserver service — the longest-prefix rule lets it win over the
+ * generic `/plugins` bundle route, and no host source change is needed. The
+ * service is optional at this plugin's start time (same ordering reality as
+ * the tools registry), so registration probes immediately AND on the
+ * `internal/service` event, exactly like the tools registration below.
+ */
+
+/** Route prefix under /plugins; anything under it is this plugin's asset. */
+const ASSET_ROUTE_PATH = '/plugins/@deepseek-ai/dsh-genui/assets'
+
+/** Safe flat file names only: no slashes, no traversal, js assets only. */
+const ASSET_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.js$/
+
+/** The handler itself (registered via the optional httpServer probe). */
+async function serveGenuiAsset(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if (req.method !== 'GET' && req.method !== 'HEAD') {
+    res.writeHead(405)
+    res.end()
+    return
+  }
+  let pathname: string
+  try {
+    pathname = decodeURIComponent(new URL(req.url ?? '/', 'http://x').pathname)
+  } catch {
+    res.writeHead(400)
+    res.end()
+    return
+  }
+  const rel = pathname.startsWith(`${ASSET_ROUTE_PATH}/`) ? pathname.slice(ASSET_ROUTE_PATH.length) : null
+  if (rel === null) {
+    res.writeHead(404)
+    res.end()
+    return
+  }
+  const file = rel.slice(1)
+  if (!ASSET_FILE_RE.test(file)) {
+    res.writeHead(404)
+    res.end()
+    return
+  }
+  try {
+    // lib/index.js → ./assets/ = <pkg>/lib/assets/ (the tsdown asset outDir).
+    const dir = fileURLToPath(new URL('./assets/', import.meta.url))
+    const body = await readFile(join(dir, file))
+    res.writeHead(200, {
+      'content-type': 'text/javascript; charset=utf-8',
+      'cache-control': 'no-cache',
+    })
+    res.end(body)
+  } catch {
+    // Missing asset (old build) — a loud 404; the client shows its fallback.
+    res.writeHead(404)
+    res.end()
+  }
+}
+
 /** The fence language description injected into every assembled system prompt. */
-export const GENUI_SECTION_TEXT = `You can render interactive UI components INSIDE your reply — as part of your answer, between paragraphs — by emitting a fenced block with the language tag \`dsh-ui\` containing a JSON spec:
+export const GENUI_SECTION_TEXT = `You can render interactive UI components INSIDE your reply — between paragraphs — by emitting a fenced block with the language tag \`dsh-ui\` containing a JSON spec:
 
 \`\`\`dsh-ui
 {"title":"可选标题","gap":14,"items":[...]}
 \`\`\`
 
-The spec is a white-listed component tree; the UI renders it inline where the fence sits. Node vocabulary (use only these \`type\` values):
+The spec is a white-listed component tree rendered inline where the fence sits. Vocabulary (only these \`type\` values; the \`genui\` skill, when available, carries the fuller content→component mapping and field details):
 
 - text: {"type":"text","size":"h1|h2|h3|body|muted|caption","content":"...","center":true?}
-- row / col: {"type":"row"|"col","items":[...],"wrap":true?,"spacer":true?,"gap":n?}  — layout containers
-- grid: {"type":"grid","cols":n,"items":[...]}
-- card: {"type":"card","title":"...","items":[...]}
-- button: {"type":"button","label":"...","tone":"primary|danger|success|ghost","full":true?,"small":true?,"icon":"emoji?","action":"name"?}  — WITHOUT action it renders DISABLED (display-only); add action whenever the user should be able to click
-- **Secrets ban**: GenUI must never ask for passwords, API keys, access tokens, recovery codes, or other secrets — refuse and explain when a request requires them
-- input: {"type":"input","label":"...","placeholder":"...","inputType":"text|email","value":"...","action":"name"?,"id":"field-id"?}  — action fires on blur AND on Enter (submit:true); with an id the value persists across refresh and is collected by submit (fields:{id:value})
-- select: {"type":"select","label":"...","options":["...","..."],"action":"name"?}
-- checkbox: {"type":"checkbox","label":"...","checked":true?,"action":"name"?}
-- radio: {"type":"radio","label":"...","options":["...","..."],"selected":n?,"action":"name"?}  — add "group":"题目名" to RECORD the choice instead of round-tripping per click; a sibling submit node then collects all groups in ONE action
-- link: {"type":"link","label":"..."}
+- row / col: {"type":"row"|"col","items":[...],"wrap":true?,"spacer":true?,"gap":n?} — 布局容器
+- grid: {"type":"grid","cols":n,"items":[...]} / card: {"type":"card","title":"...","items":[...]}
+- button: {"type":"button","label":"...","tone":"primary|danger|success|ghost","full":true?,"small":true?,"icon":"emoji?","action":"name"?} — 无 action 时渲染为禁用态
+- input / textarea: {"type":"input"|"textarea","label":"...","placeholder":"...","inputType":"text|email"?,"rows":n?,"value":"...","action":"name"?,"id":"field-id"?} — input 按 Enter 提交（submit:true）、textarea Ctrl/Cmd+Enter；blur 仅值有变化才发送；带 id 的值跨刷新持久化并被 sibling submit 收集为 fields:{id:value}
+- select: {"type":"select","label":"...","options":[...],"selected":下标?,"action":"name"?,"id":"field-id"?} — id/selected 语义同 input
+- checkbox / switch: {"type":"checkbox"|"switch","label":"...","checked":true?,"action":"name"?}
+- radio: {"type":"radio","label":"...","options":[...],"selected":n?,"action":"name"?} — 加 "group":"题目名" 记录选择（点击不往返）；再加 "answer":正确下标|标签 与 "explanation":"解析" 供 sibling submit 本地判分
+- submit: {"type":"submit","label":"交卷","groups":["q1"]?,"action":"name"?,"resetAction":"name"?} — LOCAL-FIRST：题目带 answer 时点击就地判分（得分 + 逐题 ✓/✗ + 解析）并锁定至「重新作答」，零往返、无需 action；仅当无 answer 时才发一个 action {answers:{group:choice},fields:{id:value},total,answered}；未答完保持禁用
+- quiz: {"type":"quiz","question":"...","options":[{"label":"...","correct":true?,"feedback":"..."?}],"explanation":"...","id":"..."?,"action":"name"?} — 点选就地判对错 + 重试；id 变化重置；带 action 时另回传 {type:'quiz',question,answer,correct}
+- link: {"type":"link","label":"...","href":"https://..."?} — 仅 http(s)/mailto；无 href 渲染为纯文本
 - badge: {"type":"badge","label":"...","tone":"success|warn|danger|accent","icon":"emoji?"}
 - stat: {"type":"stat","label":"...","value":"...","delta":"+12.4%|-3%"}
 - progress: {"type":"progress","label":"...","value":0-100,"valueLabel":"70%"}
-- divider: {"type":"divider"}
+- divider: {"type":"divider"} / spacer: {"type":"spacer"}
 - list: {"type":"list","items":["..."] or [{"title":"...","desc":"..."}]}
 - table: {"type":"table","columns":["..."],"rows":[["...","..."]]}
-- chart: {"type":"chart","kind":"bars|line|donut","data":[{"label":"...","value":n,"color":"#hex?"}],"series":[...]?}  — bars (default), line trend, donut share; series field = grouped bars
-- tabs: {"type":"tabs","tabs":[{"label":"...","items":[...]}]}  — switchable tab panels
+- chart: {"type":"chart","kind":"bars|line|donut","data":[{"label":"...","value":n,"color":"#hex?"}],"series":[...]?} — bars 默认；line 趋势；donut 占比；series=分组柱；负值柱高为 0 但标注照显
+- tabs: {"type":"tabs","tabs":[{"label":"...","items":[...]}]} / accordion: {"type":"accordion","items":[{"title":"...","items":[...]}]}
 - avatar: {"type":"avatar","name":"..."}
-- spacer: {"type":"spacer"}
-- plot: {"type":"plot","series":[{"expr":"sin(x)","label":"...","color":"#hex?"}],"xMin":-5,"xMax":5,"yMin":?,"yMax":?,"title":"..."}  — SVG math function plot; expressions use sin/cos/tan/asin/acos/atan/sqrt/cbrt/exp/log/ln/abs/floor/ceil/round/min/max/pow, constants pi/e/tau, and the variable x
+- plot: {"type":"plot","series":[{"expr":"sin(x)","label":"...","params":[...]?}],"xMin":-5,"xMax":5,"yMin":?,"yMax":?,"title":"..."} — SVG 函数图（可拖拽平移/滚轮缩放；params 渲染实时滑块）；表达式白名单 sin/cos/tan/asin/acos/atan/sqrt/cbrt/exp/log/ln/abs/floor/ceil/round/min/max/pow，常量 pi/e/tau，变量 x
 - callout: {"type":"callout","tone":"info|success|warning|error","title":"...","content":"..."}
-- steps: {"type":"steps","current":n,"steps":[{"title":"...","desc":"..."}]}  — progress checklist
-- keyvalue: {"type":"keyvalue","pairs":[{"key":"...","value":"..."}]}
-- diff: {"type":"diff","diffs":[{"path":"...","oldText":"..."|null,"newText":"..."}]}  — code diff
-- json: {"type":"json","value":...}  — JSON tree inspector
-- code: {"type":"code","lang":"ts","code":"..."}  — syntax-highlighted code
-- radio: {"type":"radio","label":"...","options":["...","..."],"selected":n?,"action":"name"?}  — add "group":"题目名" to RECORD the choice instead of round-tripping per click; add "answer":正确下标或标签 and "explanation":"解析" so a sibling submit node can grade it LOCALLY on click
-- submit: {"type":"submit","label":"交卷","action":"name"?,"groups":["q1","q2"]?,"resetAction":"name"?}  — the 交卷 button. LOCAL-FIRST: when the questions carry "answer" data, clicking grades IN PLACE (score + per-question ✓/✗ + explanations, zero model round trip) and locks the questions until the user clicks 重新作答 (fully local; resetAction optionally notifies you). action is OPTIONAL: with "answer" data present the click stays fully local and needs no action. Only when NO question has "answer" data does it send ONE action {answers:{group:choice,...},fields:{id:value},total,answered} — fields collects every input/textarea carrying an id. Disabled until every listed group is answered (or ≥1 answer/field without groups).
-- switch: {"type":"switch","label":"...","checked":true?,"action":"name"?}
-- textarea: {"type":"textarea","label":"...","placeholder":"...","rows":n?,"value":"...","action":"name"?,"id":"field-id"?}  — action fires on blur AND on Ctrl/Cmd+Enter (submit:true); with an id the value persists and is collected by submit
-- accordion: {"type":"accordion","items":[{"title":"...","items":[...]}]}
-- copy: {"type":"copy","label":"复制","text":"..."}  — copy-to-clipboard chip
-- mermaid: {"type":"mermaid","code":"graph TD\\nA-->B"}  — flowchart/sequence/class/gantt/pie/er/state/journey diagrams
-- scene3d: {"type":"scene3d","title":"...","meshes":[{"shape":"box|sphere|cone|cylinder|torus","color":"#hex?","size":n|[w,h,d]?,"position":[x,y,z]?,"rotation":[rx,ry,rz]?,"scale":n?|[...]?}],"ambient":0-2?,"background":"#hex?"}  — 3D WebGL scene, drag to rotate, wheel to zoom
-- timeline: {"type":"timeline","items":[{"title":"...","desc":"...","time":"..."}]}  — vertical event timeline
-- file-tree: {"type":"file-tree","items":[{"name":"...","type":"file|dir","children":[...]?}]}  — directory tree
-- breadcrumb: {"type":"breadcrumb","items":["首页","设置","账户"]}  — path-style navigation trail
-- quiz: {"type":"quiz","question":"...","options":[{"label":"...","correct":true?,"feedback":"..."?}],"explanation":"...","id":"..."?,"action":"name"?}  — teaching question with in-place judging and retry; with action the chosen answer is ALSO sent to you ({type:'quiz',question,answer,correct})
+- steps: {"type":"steps","current":n,"steps":[{"title":"...","desc":"..."}]}
+- keyvalue: {"type":"keyvalue","pairs":[{"key":"...","value":"..."}]} / json: {"type":"json","value":...} / code: {"type":"code","lang":"ts","code":"..."} / diff: {"type":"diff","diffs":[{"path":"...","oldText":"..."|null,"newText":"..."}]}
+- copy: {"type":"copy","label":"复制","text":"..."}
+- mermaid: {"type":"mermaid","code":"graph TD\\nA-->B"} — flowchart/sequence/class/gantt/pie/er/state/journey
+- scene3d: {"type":"scene3d","title":"...","meshes":[{"shape":"box|sphere|cone|cylinder|torus","color":"#hex?","size":n|[w,h,d]?,"position":[x,y,z]?,"rotation":[rx,ry,rz]?,"scale":n?|[x,y,z]?}],"ambient":0-2?,"background":"#hex?"} — 拖拽旋转滚轮缩放
+- timeline: {"type":"timeline","items":[{"title":"...","desc":"...","time":"..."}]}
+- file-tree: {"type":"file-tree","items":[{"name":"...","type":"file|dir","children":[...]?}]} — 目录行可点击折叠
+- breadcrumb: {"type":"breadcrumb","items":["首页","设置","账户"]}
 
 Rules:
-- Trigger: use the fence proactively whenever structured presentation beats prose — key points, emphasis, comparisons, flows, steps, status, data, demos — even if the user did not ask for UI. Plain Q&A and one-liners stay prose. Load the \`genui\` skill for the full content→component mapping table.
-- Put the fence exactly where the component belongs in your answer; prose flows around it.
-- Use stat/grid/card/table/chart/plot/tabs/callout/steps to build structured, realistic interfaces.
-- Component choice (pick ONE primary component per topic): conclusion/alert → callout · 2–4 metrics → grid+stat · completion → progress · multi-stage → steps · bullet points → list · key-value/config → keyvalue · comparison data → table · trend → chart(line) · share → chart(donut) · category comparison → chart(bars) · math curve → plot · events → timeline · paged content → tabs · long content → accordion · tree structure → file-tree · code → code · file changes → diff · nested JSON → json · architecture/flow → mermaid · 3D only when content IS geometry → scene3d · teaching only → quiz · one action → button(action). Prefer table/chart over text piles; never repeat the same data in two components; 3–8 components per reply; when in doubt, fewer.
-- A malformed fence degrades to a plain code block, so keep the JSON strict.
-- Do NOT wrap the fence in another code fence, and do not put markdown inside the JSON strings.
-- Prefer dark-theme-friendly content; the UI theme is the app's, not yours.
-- For 3D scenes keep mesh counts small (1–5); for plots give sane xMin/xMax ranges.
-- Keep specs compact: at most 200 nodes total and 8 levels of nesting; oversized specs are truncated by the renderer.
-- v2 actions: button / input / select / checkbox / radio / switch / textarea / quiz may carry "action":"name"; the user's click or change is then sent back to you as [genui-action] name with the component's current data, so you can re-render the UI with the result. Interactive components MUST carry an action — a button without one renders disabled and the user cannot click it. Buttons with an action show a brief "已响应" feedback on click while your round trip is in flight.
-- LOCAL-FIRST principle: any state change the UI can do by itself — judging, grading, resetting, expanding, selecting — happens IN PLACE with zero model round trip. Send an action ONLY when you must participate (generating new content, executing tools, next-step advice). Do not make the user wait for a round trip to see a result the components already know.
-- Durable state: interaction state (radio answers, submit lock, field values) persists per session+content — refreshing the page or replaying the message restores it exactly; NEW content (换题, edited spec) starts clean automatically. Re-render the SAME content to keep the user's state; render NEW content to reset it.
-- Exam pattern: for a multi-question paper emit one radio per question — each with "group":"<question id>", "answer":正确选项下标或标签, "explanation":"解析" — plus ONE submit node with "groups":["<all ids>"]. The user answers everything locally and clicks 交卷; grading happens INSTANTLY in the UI (score + per-question ✓/✗ + explanations) with no round trip. Re-render only when the user asks for a NEW paper or follow-up advice.
-- Tool channel: you may also call the render_ui tool with the same spec to render the UI as a card in the tool row (e.g. a dashboard the user asked you to "build"); the fence channel renders inline in the reply — prefer the fence for UI that is part of your answer, the tool for UI that is a deliverable.
-- Panel updates: calling render_ui also renders the spec into the session panel (the dock above the composer); calling it again updates that SAME panel in place — use this for surfaces the user keeps refreshing, and keep the fence for one-shot explainers.
-- Panel fences: a \`\`\`dsh-ui fence whose spec carries "panel": true renders ONLY into the session panel (nothing in the message flow) and updates it in place — the tool-free way to refresh a panel.
-- Panel append: a panel fence may carry "append": true to MERGE into the existing panel instead of replacing it — same-labelled tabs get their items appended, new tabs are added, plain items append to the tail. Use it to GROW a panel incrementally (add a tab, add a section) without resending prior content, so the panel is never bounded by a single message size. The whole panel is capped at 200 nodes / 200 appends; once a panel hits the cap, send a REPLACE (drop "append") to rebuild it.
-- Panel actions: when a [genui-action] from a panel component arrives, reply with the updated panel:true fence plus at most one short line of confirmation (e.g. "已刷新") — no explanations, no ordinary fences; the panel alone changes.`
+- Trigger: 结构化表达优于纯文本时就主动用围栏（要点、强调、对比、流程、步骤、状态、数据、演示），纯问答与一句话不套 UI。
+- 围栏放在回答中该组件该在的位置，文字前后照常流动；不要把围栏套进别的代码围栏，JSON 字符串内不放 markdown。
+- Component choice (每个主题一个主组件): 结论/提醒→callout · 2–4 指标→grid+stat · 进度→progress · 多阶段→steps · 要点→list · 配置→keyvalue · 对比→table · 趋势→chart(line) · 占比→chart(donut) · 分类对比→chart(bars) · 数学曲线→plot · 事件→timeline · 分页内容→tabs · 长内容→accordion · 树→file-tree · 代码→code · 文件变更→diff · 嵌套JSON→json · 架构/流程→mermaid · 仅几何内容→scene3d · 教学→quiz · 单操作→button(action)。优先 table/chart 而非文字堆砌；同一数据不重复出现在两个组件；每次回复 3–8 个组件，拿不准就少。
+- 语法: 坏围栏降级为代码块，保持 JSON 严格。≥3 节点或含 table 的围栏发出前调用 validate_dsh_ui 验证，❌ 则修好再发。
+- 主题: 内容适配暗色；UI 主题跟随 app，不要自造。规模: ≤200 节点、嵌套≤8 层（超出被截断）；3D 网格 1–5 个；plot 给合理 xMin/xMax。
+- v2 actions: button/input/select/checkbox/radio/switch/textarea/quiz 可带 "action":"name"，交互以 [genui-action] name + 组件数据回传，届时重渲染更新 UI。可交互组件必须带 action（无 action 按钮禁用）；带 action 的按钮点击有「已触发」本地反馈。
+- LOCAL-FIRST: UI 自己能做的状态变化（判卷、判题、重置、展开、选中）全部就地完成，零模型往返；action 只用于必须模型参与的事（生成新内容、执行工具、下一步建议）。
+- Durable state: 交互状态按「会话+内容指纹」持久化——刷新/重放同一内容恢复原状；换内容（换题、改 spec）自动清空。重渲染相同内容保留状态，渲染新内容重置状态。
+- Exam pattern: 每题一个 radio（group 题目名 + answer + explanation）+ 一个 submit（groups 全列）；用户答完点交卷，本地即时判分。仅当用户要新卷或追问建议时才重渲染。
+- Secrets ban: GenUI 不得索取密码、API Key、访问令牌、恢复码等秘密；需要时拒绝并解释。
+- Tool channel: render_ui 工具把同一 spec 渲染为工具行卡片（交付物型界面用）；围栏用于回答内联 UI。
+- Panel: "panel":true 围栏只渲染进会话面板 dock 并原地更新；"append":true 追加合并（同标签 tabs 追加/新标签加入/尾部追加）；面板上限 200 节点/200 次追加，满了发 replace 重建。面板组件来的 [genui-action] 只回一个 panel:true 围栏 + 至多一行 10 字以内确认，不解释、不用普通围栏。`
 
 /**
  * Register the GenUI output-language section and the render_ui tool.
@@ -123,10 +173,26 @@ export function apply(ctx: Context): void {
     const tools = value ?? ctx.reflect.get('tools', false) as { register(tool: unknown): unknown } | undefined
     if (tools === undefined) return
     tools.register(createRenderUiTool())
+    tools.register(createValidateDshUiTool())
     registered = true
   }
   tryRegister(undefined)
   ctx.on('internal/service', (name: string, value: unknown) => {
     if (name === 'tools') tryRegister(value as { register(tool: unknown): unknown })
+  })
+
+  // Lazy-engine asset route: same optional-probe pattern as the tools
+  // registry — the webserver service may bind after this plugin starts.
+  let assetsRegistered = false
+  const tryRegisterAssets = (value: { register(route: unknown): unknown } | undefined): void => {
+    if (assetsRegistered) return
+    const httpServer = value ?? ctx.reflect.get('httpServer', false) as { register(route: unknown): unknown } | undefined
+    if (httpServer === undefined) return
+    httpServer.register({ kind: 'prefix', path: ASSET_ROUTE_PATH, handler: serveGenuiAsset })
+    assetsRegistered = true
+  }
+  tryRegisterAssets(undefined)
+  ctx.on('internal/service', (name: string, value: unknown) => {
+    if (name === 'httpServer') tryRegisterAssets(value as { register(route: unknown): unknown })
   })
 }

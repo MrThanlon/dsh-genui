@@ -30,7 +30,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { panelStateKey } from './interaction-store.ts'
-import { getPanelExpandToken, getPanelSpec, subscribePanel, subscribePanelExpand } from './panel-store.ts'
+import { clearSessionPanel, getPanelExpandToken, getPanelSpec, subscribePanel, subscribePanelExpand } from './panel-store.ts'
 import css from './GenuiBlock.module.css'
 
 /** Resize bounds for the panel body, in px. */
@@ -67,6 +67,18 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
   useEffect(() => {
     if (expandToken > 0) setCollapsed(false)
   }, [expandToken])
+
+  // Session teardown: the dock is session-scoped, so unmount means the host
+  // pruned or destroyed the session's scope. Release the session's panel
+  // state (snapshot, ops, overflow diagnostics, expand token) — without this
+  // the module-level store grows one entry per session for the app's whole
+  // lifetime. A reopen lazily rebuilds from history replays, which is the
+  // host's own lifecycle contract.
+  useEffect(() => {
+    return () => {
+      clearSessionPanel(sessionId)
+    }
+  }, [sessionId])
 
   // Cleanup safety net: if the component unmounts mid-drag (spec cleared),
   // the window listeners must not outlive it.

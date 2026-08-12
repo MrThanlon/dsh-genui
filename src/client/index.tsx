@@ -24,12 +24,12 @@ import { useLayoutEffect, useEffect, useRef, useState, type CSSProperties, type 
 import { CodeBlock, registerFenceRenderer, type FenceRenderer } from '@deepseek-ai/dsh-client-ui-primitives'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { GenuiBlock } from './GenuiBlock.tsx'
-import { repairGenuiSpec, validateGenuiSpec } from './guard.ts'
+import { repairGenuiSpec } from './guard.ts'
 import { fenceStateKey } from './interaction-store.ts'
 import { parsePartialGenuiSpec } from './parse-partial.ts'
 import { createPanelSlashSource } from './panel-command.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
-import { applyPanelOperation, PANEL_LIMITS, type PanelOperationStatus } from './panel-store.ts'
+import { applyPanelOperation, diagnosePanelBudget, type PanelOperationStatus } from './panel-store.ts'
 import { GenuiToolView } from './toolview.tsx'
 import type { GenuiSpec } from './spec.ts'
 import type { SlashServiceContract } from '@deepseek-ai/dsh-client-ui-slash/client'
@@ -158,14 +158,17 @@ function repairFenceJson(raw: string): { text: string; repairs: number } | null 
 /**
  * Tier-2 repair — SETTLED MESSAGES ONLY (never while streaming): heals
  * structural incompleteness — missing closing quotes/brackets — by appending
- * the missing terminators. This must NOT run on a still-growing body (a half
- * would parse as a finished prefix and flash premature UI), so callers gate
- * it on `context.source` being present, which the host only provides once
- * the message is settled.
+ * the missing terminators, and heals stray closers — a `]` mistyped as `}` or
+ * a duplicated terminator — by skipping closers that do not match the open
+ * stack (they cannot be legal JSON). This must NOT run on a still-growing
+ * body (a half would parse as a finished prefix and flash premature UI), so
+ * callers gate it on `context.source` being present, which the host only
+ * provides once the message is settled.
  *
  * Runs on the tier-1 result (or the raw body), then closes any unterminated
- * string and appends the missing `}` / `]` in stack order. Adopted only when
- * the completed body parses as whole JSON.
+ * string and appends the missing `}` / `]` in stack order, while skipping
+ * mismatched closers. Adopted only when the completed body parses as whole
+ * JSON.
  */
 function completeFenceJson(raw: string): { text: string; repairs: number } | null {
   const tier1 = repairFenceJson(raw)
@@ -214,8 +217,17 @@ function completeFenceJson(raw: string): { text: string; repairs: number } | nul
       continue
     }
     if (ch === '}' || ch === ']') {
-      if (stack[stack.length - 1] === ch) stack.pop()
-      out += ch
+      if (stack[stack.length - 1] === ch) {
+        stack.pop()
+        out += ch
+      } else {
+        // Mismatched closer (e.g. a `]` mistyped as `}`, or a duplicated
+        // terminator): no legal JSON can contain it here, so skip it and let
+        // the remaining closers pair up again. The whole-body parse below is
+        // the final arbiter — if skipping made things worse, nothing is
+        // adopted and the diagnostic banner stays.
+        repairs++
+      }
       continue
     }
     out += ch
@@ -296,43 +308,6 @@ function FenceFallback({ raw, fenceKey }: { raw: string; fenceKey: Key }) {
   )
 }
 
-/** Amber note style for a parseable-but-invalid spec (invalid nodes were
- * dropped/repaired silently by the guard; make that visible instead). */
-const SPEC_ISSUE_STYLE: CSSProperties = {
-  margin: '0 0 6px',
-  padding: '6px 10px',
-  borderRadius: 6,
-  background: 'rgba(245, 158, 11, 0.14)',
-  border: '1px solid rgba(245, 158, 11, 0.4)',
-  color: '#fbbf24',
-  fontSize: 12,
-  lineHeight: 1.55,
-  whiteSpace: 'pre-wrap',
-}
-
-/**
- * Issues worth surfacing for a parsed spec: structural defects the guard
- * healed by dropping/clamping (empty arrays, positional arrays, wrong-typed
- * fields). `unknown type` entries are excluded — plugin-registered custom
- * components are valid when a renderer is registered, and the guard cannot
- * know, so they must not look like errors.
- */
-function visibleSpecIssues(parsed: unknown): string[] {
-  const issues = validateGenuiSpec(parsed).errors.filter((e) => !e.includes('unknown type'))
-  return issues.slice(0, 3)
-}
-
-/** Small amber note above the repaired UI when the raw spec contained
- * defects the guard had to heal. Kept invisible for clean specs. */
-function SpecIssuesNote({ issues }: { issues: string[] }) {
-  if (issues.length === 0) return null
-  return (
-    <div style={SPEC_ISSUE_STYLE} role="note">
-      ⚠️ dsh-ui 围栏含不合法内容，已自动修复/忽略：{issues.join('；')}
-    </div>
-  )
-}
-
 /**
  * Keyed publisher for a settled `panel:true` fence: submits ONE panel
  * operation from the host-provided stable source (id + order), in an
@@ -358,23 +333,9 @@ function FencePanelPublisher({ sessionId, sourceId, order, spec }: {
   return null
 }
 
-/** One diagnostic per over-budget source (replays stay silent). */
-const diagnosedOverflow = new Set<string>()
-
-function diagnosePanelBudget(sessionId: string, sourceId: string): void {
-  const key = `${sessionId}\u0000${sourceId}`
-  if (diagnosedOverflow.has(key)) return
-  diagnosedOverflow.add(key)
-  console.warn(
-    `[genui] 面板已到节点/操作上限（${PANEL_LIMITS.maxNodes} 节点、${PANEL_LIMITS.maxAppends} 条追加），本次 append 被拒绝；请让模型发送 replace 更新面板。`,
-  )
-}
-
 export const renderGenuiFence: FenceRenderer = (raw, key, context) => {
   const parsed = parsePartialGenuiSpec(raw)
   let spec = parsed === null ? null : repairGenuiSpec(parsed)
-  let repairNote: string | null = null
-  let issuesSource: unknown = parsed
   if (spec === null) {
     // Tier-1 (quote escape + trailing commas): safe at any time — adopted
     // only when the whole body parses, so a still-growing streaming half
@@ -383,10 +344,6 @@ export const renderGenuiFence: FenceRenderer = (raw, key, context) => {
     if (repaired !== null) {
       const reparsed = parsePartialGenuiSpec(repaired.text)
       spec = reparsed === null ? null : repairGenuiSpec(reparsed)
-      if (spec !== null) {
-        issuesSource = reparsed
-        repairNote = `已自动修复 ${repaired.repairs} 处 JSON 问题（字符串内未转义引号/尾逗号已处理）并渲染`
-      }
     }
     // Tier-2 (structural completion: missing quotes/brackets): only for
     // settled messages — the host provides `source` exclusively once the
@@ -396,10 +353,6 @@ export const renderGenuiFence: FenceRenderer = (raw, key, context) => {
       if (completed !== null) {
         const reparsed = parsePartialGenuiSpec(completed.text)
         spec = reparsed === null ? null : repairGenuiSpec(reparsed)
-        if (spec !== null) {
-          issuesSource = reparsed
-          repairNote = `已自动补全 ${completed.repairs} 处缺失的引号/括号并渲染`
-        }
       }
     }
   }
@@ -427,13 +380,10 @@ export const renderGenuiFence: FenceRenderer = (raw, key, context) => {
   return (
     // React key carries the stable source identity when present (atomic
     // remount at streaming→settled), falling back to the document key.
+    // Repaired specs render SILENTLY: once the UI renders, no amber note
+    // tells the user something was wrong — only an unrecoverable body keeps
+    // the red diagnostic.
     <ErrorBoundary key={context?.source?.id ?? key} label="该界面">
-      {repairNote !== null && (
-        <div style={SPEC_ISSUE_STYLE} role="note">
-          ⚠️ {repairNote}。
-        </div>
-      )}
-      <SpecIssuesNote issues={visibleSpecIssues(issuesSource)} />
       <GenuiBlock
         spec={spec}
         // v2.7 durable state: session + stable source + content fingerprint —

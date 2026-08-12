@@ -21,7 +21,10 @@ export interface PlotSeries {
     /** v2: adjustable parameters, one slider each, live re-render. */
     params?: PlotSeriesParam[] | undefined;
 }
-/** Categorical palette for multi-series plots (muted, dark-theme friendly). */
+/** Categorical palette for multi-series plots: host static tokens only
+ * (design system v2 — same families as the chart/avatar palettes in
+ * GenuiBlock, no off-theme hexes). CSS custom properties resolve inside
+ * inline `style` on SVG strokes and legend swatches. */
 export declare const PLOT_COLORS: string[];
 export interface PlotBlockProps {
     /** Functions to draw, in draw order. */

@@ -6,7 +6,7 @@
 import { fireEvent } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { GenuiScene3D } from '../src/client/spec.ts'
-import { mountScene } from '../src/client/scene3d-lazy.ts'
+import { mountScene } from '../src/client/scene3d-core.ts'
 
 const { renderSpy } = vi.hoisted(() => ({ renderSpy: vi.fn() }))
 

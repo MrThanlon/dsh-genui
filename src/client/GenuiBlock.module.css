@@ -188,6 +188,14 @@
 }
 .link:hover { text-decoration: underline; }
 
+/* Link without a whitelisted href: plain styled text, no pointer affordance. */
+.linkText {
+  color: var(--dsl-g-accent);
+  font-size: var(--dsl-g-font-title);
+  font-family: inherit;
+  text-decoration: none;
+}
+
 /* ---------- badges / stat / progress ---------- */
 
 .badge {
@@ -747,6 +755,22 @@
 .ftIconDir { color: var(--dsl-g-accent); font-size: 11px; }
 .ftName { color: var(--dsw-alias-label-secondary); }
 .ftDir { color: var(--dsw-alias-label-primary); font-weight: 600; }
+.ftNameBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsl-g-gap-sm);
+  min-width: 0;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: var(--dsl-g-font-body);
+  padding: 0;
+  cursor: default;
+  text-align: left;
+}
+/* Directory rows are interactive: show the affordance only when clickable. */
+button.ftNameBtn[aria-expanded] { cursor: pointer; }
+.ftNameBtn:focus-visible { outline: 2px solid var(--dsl-g-accent); outline-offset: 1px; border-radius: var(--dsl-g-radius-control); }
 
 /* ---------- breadcrumb ---------- */
 

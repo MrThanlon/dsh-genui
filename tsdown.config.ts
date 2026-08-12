@@ -92,6 +92,9 @@ const clientConfig: UserConfig = {
   format: 'cjs',
   platform: 'browser',
   dts: false,
+  // Minified production bundles: the host serves plugin bytes uncompressed,
+  // so every byte counts at first-load time.
+  minify: true,
   // No sourcemap in the production bundle: nothing ships the map, nothing
   // rewrites paths, builds are byte-identical.
   sourcemap: false,
@@ -108,15 +111,51 @@ const clientConfig: UserConfig = {
   plugins: [purityGate(), cssModulesPlugin()],
   outputOptions: {
     entryFileNames: 'client.js',
-    // The loader fetches one script per plugin; no dynamic-import chunks can
-    // ride that protocol, so the lazy mermaid/three imports fold in here.
-    // (tsdown 0.22 has no `codeSplitting` alias; inlineDynamicImports is the
-    // current-version spelling.)
-    inlineDynamicImports: true,
+    // The loader fetches one script per plugin; the lazy mermaid/three
+    // engines are NOT part of this bundle anymore — they ship as standalone
+    // IIFE assets under lib/assets/, fetched on demand by the runtime loaders
+    // (see asset-loader.ts). Nothing heavy may re-enter this bundle.
+    codeSplitting: false,
     banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(ID)}, factory: (require) => {`,
     footer: 'return module.exports; } });',
     intro: 'var module = { exports: {} }; var exports = module.exports;',
   },
+}
+
+/**
+ * Lazy engine assets: mermaid and three ship as standalone single-entry
+ * IIFEs that register themselves on `window.__GenuiAssets__` (no
+ * module-loader protocol — the loaders read the global directly after script
+ * injection). Two configs because rolldown refuses IIFE with multiple
+ * entries; each bundle is fully independent (no cross-entry chunks). The
+ * main client bundle never contains either engine, so the eager download
+ * drops from ~9 MB to the small renderer core.
+ */
+function assetConfig(name: 'mermaid' | 'three', entry: string): UserConfig {
+  return {
+    name: `${ID}/assets/${name}`,
+    entry: { [`assets/${name}`]: entry },
+    outDir: 'lib',
+    format: 'iife',
+    platform: 'browser',
+    dts: false,
+    // Minified: these engines are huge unminified (6.7 MB / 1.8 MB) and the
+    // host serves uncompressed bytes; on-demand loads still want them small.
+    minify: true,
+    sourcemap: false,
+    clean: false,
+    deps: {
+      neverBundle: [...EXTERNALS],
+      alwaysBundle: (id: string) => !EXTERNALS.includes(id),
+    },
+    define: {
+      'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV ?? 'production'),
+    },
+    plugins: [purityGate()],
+    outputOptions: {
+      entryFileNames: '[name].js',
+    },
+  }
 }
 
 const libConfig: UserConfig = {
@@ -133,4 +172,9 @@ const libConfig: UserConfig = {
   clean: false,
 }
 
-export default [libConfig, clientConfig]
+export default [
+  libConfig,
+  clientConfig,
+  assetConfig('mermaid', 'src/client/asset-mermaid.ts'),
+  assetConfig('three', 'src/client/asset-three.ts'),
+]

@@ -14,7 +14,7 @@ import { loadBlockState, saveBlockState } from './interaction-store.ts'
 import type {
   GenuiAccordion, GenuiBreadcrumb, GenuiCallout, GenuiChart, GenuiCode, GenuiCopy, GenuiDiff, GenuiFileTree,
   GenuiFileTreeNode, GenuiInput, GenuiJson, GenuiKeyValue, GenuiMermaid, GenuiNode, GenuiPlot, GenuiQuiz, GenuiRadio,
-  GenuiScene3D, GenuiSpec, GenuiSteps, GenuiSubmit, GenuiSwitch, GenuiTabs, GenuiTextarea, GenuiTimeline,
+  GenuiScene3D, GenuiSelect, GenuiSpec, GenuiSteps, GenuiSubmit, GenuiSwitch, GenuiTabs, GenuiTextarea, GenuiTimeline,
 } from './spec.ts'
 import css from './GenuiBlock.module.css'
 
@@ -217,22 +217,7 @@ function renderNode(
       )
     }
     case 'input': return <InputNode key={key} node={node} onAction={onAction} answers={answers} />
-    case 'select': {
-      const action = node.action
-      return (
-        <label key={key} className={css.field}>
-          {node.label !== undefined && <span>{node.label}</span>}
-          <select
-            className={css.select}
-            onChange={action !== undefined && onAction !== undefined
-              ? e => onAction(action, { type: 'select', value: e.currentTarget.value })
-              : undefined}
-          >
-            {node.options.slice(0, GENUI_LIMITS.maxOptions).map((o, i) => <option key={i}>{o}</option>)}
-          </select>
-        </label>
-      )
-    }
+    case 'select': return <SelectNode key={key} node={node} onAction={onAction} answers={answers} />
     case 'checkbox': {
       const action = node.action
       return (
@@ -249,7 +234,13 @@ function renderNode(
       )
     }
     case 'link': {
-      return <button key={key} type="button" className={css.link}>{node.label}</button>
+      // Honest affordance: with a whitelisted href this is a REAL anchor;
+      // without one it is plain styled text (a dead clickable-looking button
+      // was the same complaint class as the disabled-button fix).
+      const href = node.href
+      return href !== undefined
+        ? <a key={key} className={css.link} href={href} target="_blank" rel="noopener noreferrer">{node.label}</a>
+        : <span key={key} className={css.linkText}>{node.label}</span>
     }
     case 'badge': {
       const tone = node.tone ?? ''
@@ -485,8 +476,10 @@ function BarsNode({ chart }: { chart: GenuiChart }) {
               <div className={css.groupedBars}>
                 {grouped.map((s, si) => {
                   const d = s.data[i]
-                  // Cap at 82% so the per-bar value annotation stays inside the plot.
-                  const h = d === undefined ? 0 : Math.min(Math.round((Number(d.value) / max) * 100), 82)
+                  // Cap at 82% so the per-bar value annotation stays inside
+                  // the plot; negatives clamp to a zero-height bar.
+                  const v = d === undefined ? 0 : Number(d.value) || 0
+                  const h = d === undefined ? 0 : Math.min(Math.round((Math.max(0, v) / max) * 100), 82)
                   return (
                     <div key={si} className={css.groupedBar} title={s.label}>
                       <span className={css.groupValue}>{d === undefined ? '' : String(d.value)}</span>
@@ -511,6 +504,9 @@ function BarsNode({ chart }: { chart: GenuiChart }) {
     )
   }
   const data = chart.data.slice(0, GENUI_LIMITS.maxChartPoints)
+  // Negative values clamp to a zero-height bar (the value annotation still
+  // shows the real number) — a negative `height` percentage is invalid CSS
+  // and used to collapse the bar entirely.
   const max = Math.max(...data.map(d => Number(d.value) || 0), 1)
   return (
     <div className={css.chart}>
@@ -520,7 +516,8 @@ function BarsNode({ chart }: { chart: GenuiChart }) {
         ))}
         {data.map((d, i) => {
           // Cap at 85% so the value annotation always stays inside the plot.
-          const h = Math.min(Math.round((Number(d.value) / max) * 100), 85)
+          const v = Number(d.value) || 0
+          const h = Math.min(Math.round((Math.max(0, v) / max) * 100), 85)
           return (
             <div key={i} className={css.barCol}>
               <span className={css.barValue}>{String(d.value)}</span>
@@ -588,10 +585,13 @@ function LineChartNode({ chart }: { chart: GenuiChart }) {
   )
 }
 
-/** Donut: share of total with a center total. */
+/** Donut: share of total with a center total. Negative values contribute
+ * zero arc (a negative dasharray segment used to produce an invalid
+ * stroke-dasharray and the browser drew the FULL circle instead). */
 function DonutNode({ chart }: { chart: GenuiChart }) {
   const data = chart.data.slice(0, GENUI_LIMITS.maxChartPoints)
-  const total = data.reduce((s, d) => s + (Number(d.value) || 0), 0) || 1
+  const clamped = data.map(d => ({ ...d, v: Math.max(0, Number(d.value) || 0) }))
+  const total = clamped.reduce((s, d) => s + d.v, 0) || 1
   const R = 42
   const C = 2 * Math.PI * R
   let offset = 0
@@ -599,8 +599,8 @@ function DonutNode({ chart }: { chart: GenuiChart }) {
     <div className={css.donut}>
       <svg width="120" height="120" viewBox="0 0 120 120">
         <circle cx="60" cy="60" r={R} fill="none" strokeWidth="14" className={css.donutTrack} />
-        {data.map((d, i) => {
-          const frac = (Number(d.value) || 0) / total
+        {clamped.map((d, i) => {
+          const frac = d.v / total
           const len = frac * C
           const el = (
             <circle
@@ -956,6 +956,64 @@ function isImeSubmitKeydown(e: React.KeyboardEvent): boolean {
   return native.isComposing === true || native.keyCode === 229
 }
 
+/** Select: single choice from a dropdown, field-aligned (v2.8). With an `id`
+ * the chosen option persists across refresh and joins the sibling submit's
+ * `fields` collection; a model-provided `selected` default registers at
+ * mount; a restored durable value wins over both. Without any default a
+ * placeholder option shows — nothing is silently pre-registered (same
+ * philosophy as radio). */
+function SelectNode({ node, onAction, answers }: {
+  node: GenuiSelect
+  onAction?: GenuiBlockProps['onAction']
+  answers?: AnswersState | undefined
+}) {
+  const action = node.action
+  const id = node.id
+  const options = node.options.slice(0, GENUI_LIMITS.maxOptions)
+  const restored = id !== undefined && answers?.fields[id] !== undefined
+    ? options.indexOf(answers!.fields[id]!)
+    : -1
+  const defaultValue = restored >= 0
+    ? options[restored]!
+    : node.selected !== undefined && options[node.selected] !== undefined
+      ? options[node.selected]!
+      : null
+  const [value, setValue] = useState<string | null>(defaultValue)
+  // Field invariant: a spec-provided default registers at mount.
+  const mounted = useRef(false)
+  useEffect(() => {
+    if (mounted.current) return
+    mounted.current = true
+    if (id !== undefined && defaultValue !== null) {
+      answers?.setField(id, defaultValue)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+  const send = (v: string): void => {
+    if (action !== undefined && onAction !== undefined) {
+      onAction(action, { type: 'select', value: v, ...(id !== undefined ? { id } : {}) })
+    }
+  }
+  return (
+    <label className={css.field}>
+      {node.label !== undefined && <span>{node.label}</span>}
+      <select
+        className={css.select}
+        value={value ?? ''}
+        onChange={e => {
+          const v = e.currentTarget.value
+          setValue(v)
+          if (id !== undefined) answers?.setField(id, v)
+          send(v)
+        }}
+      >
+        {value === null && <option value="" hidden disabled>请选择…</option>}
+        {options.map((o, i) => <option key={i} value={o}>{o}</option>)}
+      </select>
+    </label>
+  )
+}
+
 /** Input: single-line field. Controlled (value tracked for persistence and
  *  submit collection when `id` is set). With `action`: Enter submits
  *  immediately (`{type:'input', value, submit:true}`), blur sends too —
@@ -977,9 +1035,15 @@ function InputNode({ node, onAction, answers }: {
   // stored secret, which is exactly what the boundary forbids.
   const [value, setValue] = useState<string>(() =>
     secret ? '' : (node.value ?? (id !== undefined ? answers?.fields[id] ?? '' : '')))
+  // Last value actually DELIVERED to the model: blur only sends when the
+  // value changed since the last delivery (a focus-in/focus-out with no edit
+  // used to fire a pointless action round trip). Seeded with the mount value
+  // so the very first unedited blur also stays silent.
+  const lastSent = useRef<string | null>(value)
   const send = (submit: boolean): void => {
     if (action !== undefined && onAction !== undefined) {
-      onAction(action, { type: 'input', value, ...(submit ? { submit: true } : {}) })
+      lastSent.current = value
+      onAction(action, { type: 'input', value, ...(id !== undefined ? { id } : {}), ...(submit ? { submit: true } : {}) })
     }
   }
   const ime = useImeComposing()
@@ -1011,7 +1075,9 @@ function InputNode({ node, onAction, answers }: {
           setValue(v)
           if (id !== undefined) answers?.setField(id, v)
         }}
-        onBlur={() => send(false)}
+        onBlur={() => {
+          if (value !== lastSent.current) send(false)
+        }}
         onCompositionStart={ime.onCompositionStart}
         onCompositionEnd={ime.onCompositionEnd}
         onKeyDown={e => {
@@ -1038,9 +1104,13 @@ function TextareaNode({ node, onAction, answers }: {
   const id = node.id
   const [value, setValue] = useState<string>(() =>
     node.value ?? (id !== undefined ? answers?.fields[id] ?? '' : ''))
+  // Last value delivered to the model: blur sends only on change. Seeded
+  // with the mount value so an unedited blur stays silent.
+  const lastSent = useRef<string | null>(value)
   const send = (submit: boolean): void => {
     if (action !== undefined && onAction !== undefined) {
-      onAction(action, { type: 'textarea', value, ...(submit ? { submit: true } : {}) })
+      lastSent.current = value
+      onAction(action, { type: 'textarea', value, ...(id !== undefined ? { id } : {}), ...(submit ? { submit: true } : {}) })
     }
   }
   const ime = useImeComposing()
@@ -1067,7 +1137,9 @@ function TextareaNode({ node, onAction, answers }: {
           setValue(v)
           if (id !== undefined) answers?.setField(id, v)
         }}
-        onBlur={() => send(false)}
+        onBlur={() => {
+          if (value !== lastSent.current) send(false)
+        }}
         onCompositionStart={ime.onCompositionStart}
         onCompositionEnd={ime.onCompositionEnd}
         onKeyDown={e => {
@@ -1213,16 +1285,37 @@ function TimelineNode({ node }: { node: GenuiTimeline }) {
   )
 }
 
-/** FileTree: indented tree of files and folders. */
+/** FileTree: indented tree of files and folders. Directory rows are LOCAL
+ * collapsible (spec.ts promised "collapsible children"; this makes it true)
+ * — click a dir to fold/unfold, default fully open. Zero model round trip. */
 function FileTreeNode({ node }: { node: GenuiFileTree }) {
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set())
+  const pathKey = (depth: number, i: number): string => `${depth}-${i}`
+  const toggle = (k: string): void => {
+    setCollapsed(prev => {
+      const next = new Set(prev)
+      if (next.has(k)) next.delete(k)
+      else next.add(k)
+      return next
+    })
+  }
   const renderNode = (n: GenuiFileTreeNode, depth: number, i: number): ReactNode => {
     if (depth > GENUI_LIMITS.maxTreeDepth) return null
     const isDir = n.type === 'dir' || (n.children !== undefined && n.children.length > 0)
+    const k = pathKey(depth, i)
+    const folded = isDir && collapsed.has(k)
     return (
-      <div key={`${depth}-${i}`} className={css.ftRow} style={{ paddingLeft: `${depth * 16}px` }}>
-        <span className={`${css.ftIcon} ${isDir ? css.ftIconDir : ''}`}>{isDir ? '▸' : '·'}</span>
-        <span className={`${css.ftName} ${isDir ? css.ftDir : ''}`}>{n.name}</span>
-        {(n.children ?? []).map((c, ci) => renderNode(c, depth + 1, ci))}
+      <div key={k} className={css.ftRow} style={{ paddingLeft: `${depth * 16}px` }}>
+        <button
+          type="button"
+          className={css.ftNameBtn}
+          aria-expanded={isDir ? !folded : undefined}
+          onClick={isDir ? () => toggle(k) : undefined}
+        >
+          <span className={`${css.ftIcon} ${isDir ? css.ftIconDir : ''}`} aria-hidden>{isDir ? (folded ? '▸' : '▾') : '·'}</span>
+          <span className={`${css.ftName} ${isDir ? css.ftDir : ''}`}>{n.name}</span>
+        </button>
+        {isDir && !folded && (n.children ?? []).map((c, ci) => renderNode(c, depth + 1, ci))}
       </div>
     )
   }
@@ -1350,6 +1443,24 @@ function useDebouncedAction(onAction: GenuiBlockProps['onAction'] | undefined): 
 }
 
 /**
+ * Structural spec equality for the memo comparator: the fence path re-parses
+ * the body on every streaming chunk and produces a FRESH object even when the
+ * repaired content is unchanged (a chunk that closed no new component). The
+ * default shallow memo would then re-render the whole tree per chunk — up to
+ * ~200 full-tree renders for a max-size fence. Stringify equality makes the
+ * memo skip renders whose content did not actually change; the cost is one
+ * JSON.stringify per chunk (≤200 nodes, negligible next to a React tree
+ * reconciliation). `stateKey` already embeds the content fingerprint, so when
+ * both keys are equal and non-undefined the specs necessarily stringify
+ * equal — the stringify branch matters for the streaming path (stateKey
+ * undefined).
+ */
+function specEquivalent(a: GenuiSpec, b: GenuiSpec): boolean {
+  if (a === b) return true
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
  * Render a GenUI spec as an inline block. Falls back to nothing when the spec
  * carries no items (the fence renderer already refused non-specs before us).
  */
@@ -1447,4 +1558,4 @@ export const GenuiBlock = memo(function GenuiBlock({ spec, stateKey }: GenuiBloc
       </div>
     </div>
   )
-})
+}, (prev, next) => prev.stateKey === next.stateKey && specEquivalent(prev.spec, next.spec))

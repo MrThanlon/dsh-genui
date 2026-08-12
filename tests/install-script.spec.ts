@@ -25,6 +25,7 @@ interface Env {
 function makeEnv(): Env {
   const root = mkdtempSync(join(tmpdir(), 'genui-install-'))
   const home = join(root, 'dshhome')
+  const agentsHome = join(root, 'agentshome')
   const profile = join(home, 'profiles', 'web')
   // stub commands on PATH: dsh (version), pnpm (version), git (ls-remote ok)
   const bin = join(root, 'bin')
@@ -44,11 +45,12 @@ function makeEnv(): Env {
   mkdirSync(profile, { recursive: true })
   writeFileSync(join(profile, 'package.json'), '{"name":"web","dependencies":{"@deepseek-ai/dsh-genui":"link:whatever"}}\n')
   const dest = join(home, 'skills', 'genui', 'SKILL.md')
+  const agentsDest = join(agentsHome, 'skills', 'genui', 'SKILL.md')
   const run: Env['run'] = (profileArg = 'web') => {
     try {
       const stdout = execFileSync('sh', [INSTALL, profileArg], {
         encoding: 'utf8',
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, DSH_HOME: home },
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, DSH_HOME: home, AGENTS_HOME: agentsHome },
         stdio: ['ignore', 'pipe', 'pipe'],
       })
       return { status: 0, stdout }
@@ -57,7 +59,7 @@ function makeEnv(): Env {
       return { status: e.status ?? 1, stdout: `${e.stdout ?? ''}${e.stderr ?? ''}` }
     }
   }
-  return { root, home, profile, dest, run }
+  return { root, home, profile, dest, agentsDest, run }
 }
 
 afterEach(() => {
@@ -79,6 +81,29 @@ describe('install.sh skill sync safety', () => {
     expect(status).toBe(0)
     expect(readFileSync(e.dest, 'utf8')).toBe(PACKAGE_SKILL)
     expect(stdout).toContain('skill 已同步')
+  })
+
+  it('syncs BOTH skill roots (dshHome and agentsHome)', () => {
+    const e = env()
+    const { status, stdout } = e.run()
+    expect(status).toBe(0)
+    expect(readFileSync(e.dest, 'utf8')).toBe(PACKAGE_SKILL)
+    expect(readFileSync(e.agentsDest, 'utf8')).toBe(PACKAGE_SKILL)
+    expect(stdout).toContain('DSH_HOME/skills/genui')
+    expect(stdout).toContain('AGENTS_HOME/skills/genui')
+  })
+
+  it('fails safely when the AGENTS root target is a symlink to another file', () => {
+    const e = env()
+    const sentinel = join(e.root, 'elsewhere', 'secret-agents.txt')
+    mkdirSync(dirname(sentinel), { recursive: true })
+    writeFileSync(sentinel, 'SENTINEL-AGENTS\n')
+    mkdirSync(dirname(e.agentsDest), { recursive: true })
+    symlinkSync(sentinel, e.agentsDest)
+    const { status, stdout } = e.run()
+    expect(status).not.toBe(0)
+    expect(stdout).toContain('指向其他文件的符号链接')
+    expect(readFileSync(sentinel, 'utf8')).toBe('SENTINEL-AGENTS\n')
   })
 
   it('atomically replaces a plain existing file', () => {
