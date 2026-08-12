@@ -6,6 +6,7 @@ import { cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { installDomFenceRenderer } from '../src/client/dom-fence.tsx'
+import { inject } from '../src/client/index.tsx'
 import { getPanelSpec } from '../src/client/panel-store.ts'
 
 const VALID_SPEC = '{"title":"卡片","items":[{"type":"text","content":"你好，世界"}]}'
@@ -55,6 +56,12 @@ afterEach(() => {
 })
 
 describe('installDomFenceRenderer', () => {
+  it('declares its cordis service injects (boot sweep depends on it)', () => {
+    // 回归钉：曾丢失 inject 导出 → 宿主 fiber inject waiting 失效 →
+    // apply 早于 slots 服务运行 → 整页 "Failed to load plugins"。
+    expect([...inject].sort()).toEqual(['inputTriggers', 'sessions', 'slots'])
+  })
+
   it('renders a settled dsh-ui fence into its own root and hides the stock block', async () => {
     const row = assistantRow('s7')
     const block = stockCodeBlock(VALID_SPEC, 'dsh-ui')

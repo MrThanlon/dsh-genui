@@ -2,6 +2,7 @@
 // Teaching components: quiz judging, plot animation bar, reset, staggered reveal.
 import { act, cleanup, fireEvent, render } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { hasFenceRegistry } from './setup'
 
 // jsdom 没有真正的 requestAnimationFrame 循环；用可控 mock 手动推进帧。
 let rafCallbacks: Array<(t: number) => void> = []
@@ -34,7 +35,7 @@ function fenced(spec: unknown): string {
   return `\`\`\`dsh-ui\n${JSON.stringify(spec)}\n\`\`\``
 }
 
-describe('quiz component', () => {
+describe.skipIf(!hasFenceRegistry)('quiz component', () => {
   it('judges correct and wrong answers in place', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [
       { type: 'quiz', question: 'sin(0) 等于？', options: [
@@ -56,7 +57,7 @@ describe('quiz component', () => {
   })
 })
 
-describe('plot animation', () => {
+describe.skipIf(!hasFenceRegistry)('plot animation', () => {
   it('renders play button when a param has animateTo', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [
       { type: 'plot', series: [{ expr: 'a*sin(x)', params: [{ name: 'a', value: 1, min: 0, max: 5, animateTo: 3 }] }] },
@@ -93,7 +94,7 @@ describe('plot animation', () => {
   })
 })
 
-describe('staggered reveal', () => {
+describe.skipIf(!hasFenceRegistry)('staggered reveal', () => {
   it('wraps root items with incremental reveal delays', () => {
     const { container } = render(<MarkdownText text={fenced({ items: [
       { type: 'stat', label: 'A', value: '1' },

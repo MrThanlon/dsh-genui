@@ -31,5 +31,6 @@ export declare function prefetchGenuiAssets(): void;
  * toolview for the render_ui tool, and the session panel dock; returning the
  * disposers lets cordis tear all registrations down on plugin unload. */
 export declare function apply(ctx: Context): () => void;
+export declare const inject: string[];
 export { renderGenuiFence };
 export type { GenuiFenceContext } from './fence-render.tsx';

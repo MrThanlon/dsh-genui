@@ -5,6 +5,7 @@
 // existing type, this file catches it.
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { hasFenceRegistry } from './setup'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { gallerySpec } from '../src/client/gallery.ts'
 import { GENUI_LIMITS, repairGenuiSpec } from '../src/client/guard.ts'
@@ -21,7 +22,7 @@ describe('gallery spec', () => {
     expect(repaired).toEqual(gallerySpec)
   })
 
-  it('renders every component family through the fence path', () => {
+  it.skipIf(!hasFenceRegistry)('renders every component family through the fence path', () => {
     render(<MarkdownText text={fenced(gallerySpec)} />)
     const body = document.body.textContent ?? ''
     // Layout + text hierarchy

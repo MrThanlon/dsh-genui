@@ -4,6 +4,7 @@
 // back to the code block, and streaming renders plain (settled-only contract).
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { hasFenceRegistry } from './setup'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 
 afterEach(cleanup)
@@ -43,7 +44,7 @@ function fenced(spec: unknown): string {
 }
 
 describe('GenUI fence rendering', () => {
-  it('renders a dsh-ui fence as interactive components between prose', () => {
+  it.skipIf(!hasFenceRegistry)('renders a dsh-ui fence as interactive components between prose', () => {
     const { container } = render(<MarkdownText text={fenced(SPEC)} />)
     const block = container.querySelector('[data-genui]')
     expect(block).not.toBeNull()
@@ -62,7 +63,7 @@ describe('GenUI fence rendering', () => {
     expect(exportBtn).toBeTruthy()
   })
 
-  it('switches tabs locally', () => {
+  it.skipIf(!hasFenceRegistry)('switches tabs locally', () => {
     const { container } = render(<MarkdownText text={fenced(SPEC)} />)
     const tabs = container.querySelectorAll('[role="tab"]')
     expect(tabs).toHaveLength(2)
@@ -72,7 +73,7 @@ describe('GenUI fence rendering', () => {
     expect(container.textContent).not.toContain('#1042')
   })
 
-  it('does not leak the raw fence into prose when rendered', () => {
+  it.skipIf(!hasFenceRegistry)('does not leak the raw fence into prose when rendered', () => {
     const { container } = render(<MarkdownText text={fenced(SPEC)} />)
     expect(container.textContent).not.toContain('"items"')
     expect(container.textContent).not.toContain('type')
@@ -90,7 +91,7 @@ describe('GenUI fence rendering', () => {
     expect(container.querySelector('pre')).not.toBeNull()
   })
 
-  it('renders a complete fence as components even while streaming', () => {
+  it.skipIf(!hasFenceRegistry)('renders a complete fence as components even while streaming', () => {
     // A closed ```dsh-ui fence renders as components mid-stream: the closing
     // fence is the completion point, so the UI appears before the reply ends.
     const { container } = render(<MarkdownText text={fenced(SPEC)} streaming />)
@@ -108,7 +109,7 @@ describe('GenUI fence rendering', () => {
 })
 
 describe('GenUI chart skeleton (design system v2)', () => {
-  it('gives bar charts a plot area with baseline + 25/50/75% gridlines and a separate label row', () => {
+  it.skipIf(!hasFenceRegistry)('gives bar charts a plot area with baseline + 25/50/75% gridlines and a separate label row', () => {
     const spec = {
       items: [{ type: 'chart', data: [
         { label: '一', value: 42 }, { label: '二', value: 58 }, { label: '三', value: 49 },
@@ -129,7 +130,7 @@ describe('GenUI chart skeleton (design system v2)', () => {
     expect(container.querySelectorAll('[class*="barFill"]')).toHaveLength(3)
   })
 
-  it('renders per-bar values in grouped charts inside the plot', () => {
+  it.skipIf(!hasFenceRegistry)('renders per-bar values in grouped charts inside the plot', () => {
     const spec = {
       items: [{ type: 'chart', kind: 'bars', series: [
         { label: 'A', data: [{ label: '一', value: 30 }, { label: '二', value: 40 }] },
@@ -147,7 +148,7 @@ describe('GenUI chart skeleton (design system v2)', () => {
     expect(labels?.querySelectorAll('[class*="barLabel"]')).toHaveLength(2)
   })
 
-  it('renders a Y axis with four ticks and gridlines on line charts', () => {
+  it.skipIf(!hasFenceRegistry)('renders a Y axis with four ticks and gridlines on line charts', () => {
     const spec = {
       items: [{ type: 'chart', kind: 'line', data: [
         { label: '一', value: 10 }, { label: '二', value: 30 }, { label: '三', value: 20 },

@@ -5,6 +5,7 @@
 // contract of interactive components.
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { hasFenceRegistry } from './setup'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 import { GENUI_LIMITS } from '../src/client/guard.ts'
 
@@ -14,7 +15,7 @@ function fenced(spec: unknown): string {
   return `\`\`\`dsh-ui\n${JSON.stringify(spec)}\n\`\`\``
 }
 
-describe('render caps', () => {
+describe.skipIf(!hasFenceRegistry)('render caps', () => {
   it('bounds a spec beyond the node budget', () => {
     render(<MarkdownText text={fenced({ items: Array.from({ length: 500 }, (_, i) => ({ type: 'text', content: `item ${i}` })) })} />)
     expect(document.body.textContent).toContain('item 0')
@@ -46,7 +47,7 @@ describe('render caps', () => {
   })
 })
 
-describe('a11y wiring', () => {
+describe.skipIf(!hasFenceRegistry)('a11y wiring', () => {
   it('exposes progress as a progressbar with aria values', () => {
     render(<MarkdownText text={fenced({ items: [{ type: 'progress', label: '下载', value: 66, valueLabel: '66%' }] })} />)
     const bar = screen.getByRole('progressbar')

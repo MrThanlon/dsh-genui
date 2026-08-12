@@ -163,6 +163,13 @@ export function apply(ctx: Context): () => void {
   }
 }
 
+// Browser services the client entry needs: the slots registry (toolview +
+// dock), sessions (scoped conversation send behind actions), and
+// inputTriggers (the /panel command source). This declaration is what the
+// host's fiber inject waiting uses — without it apply() runs before the
+// services bind and the whole plugin tree fails the boot sweep.
+export const inject = ['slots', 'sessions', 'inputTriggers']
+
 // Re-export the registry renderer for the test suite (setup.ts registers it
 // exactly like apply() does on contract hosts).
 export { renderGenuiFence }

@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, render } from '@testing-library/react'
 import { afterEach, describe, expect, it } from 'vitest'
+import { hasFenceRegistry } from './setup'
 import { MarkdownText } from '@deepseek-ai/dsh-client-ui-primitives'
 
 afterEach(cleanup)
@@ -17,7 +18,7 @@ function fenced(spec: unknown): string {
 }
 
 describe('GenUI table overflow', () => {
-  it('wraps the table in a scroll container (DOM structure)', () => {
+  it.skipIf(!hasFenceRegistry)('wraps the table in a scroll container (DOM structure)', () => {
     const { container } = render(<MarkdownText text={fenced({
       title: 'AS vs Subagent Tree 对比',
       items: [
