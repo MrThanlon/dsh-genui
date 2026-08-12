@@ -102,7 +102,10 @@ describe('installDomFenceRenderer', () => {
 
   it('mounts while streaming once a component parses, and re-renders as the body grows', async () => {
     const row = assistantRow('s9', true)
-    const block = stockCodeBlock('{"items":[{"type":"text","content":"你好，世界"},{"type":"te', 'dsh-ui')
+    // Real host behaviour: the language label is EMPTY while streaming
+    // (MarkdownText passes lang={streaming ? undefined : lang}) — the fence
+    // is identified by content, not by label.
+    const block = stockCodeBlock('{"items":[{"type":"text","content":"你好，世界"},{"type":"te', '')
     row.appendChild(block)
     document.body.appendChild(row)
     const send = vi.fn()
@@ -148,7 +151,7 @@ describe('installDomFenceRenderer', () => {
 
   it('publishes a streaming panel:true fence only after the reply settles', async () => {
     const row = assistantRow('s9c', true)
-    const block = stockCodeBlock('{"panel":true,"title":"面板A","items":[{"type":"text","content":"A"}]', 'dsh-ui')
+    const block = stockCodeBlock('{"panel":true,"title":"面板A","items":[{"type":"text","content":"A"}]', '')
     row.appendChild(block)
     document.body.appendChild(row)
     const send = vi.fn()
@@ -161,10 +164,39 @@ describe('installDomFenceRenderer', () => {
       expect(block.style.display).toBe('none')
       expect(row.querySelector('.genui-dom-fence')?.textContent).toBe('')
       expect(getPanelSpec('sess-1')).toBeNull()
-      // Settle: the mount re-renders with the stable source → publish once.
+      // Settle: the label materialises (host behaviour) and the mount
+      // re-renders with the stable source → publish once.
+      const label = block.querySelector('div')
+      label!.textContent = 'dsh-ui'
       row.removeAttribute('data-streaming')
       await tick()
       expect(getPanelSpec('sess-1')?.title).toBe('面板A')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('restores the stock block when a content-identified fence settles as another language', async () => {
+    const row = assistantRow('s9e', true)
+    // A ```json fence whose streaming body happens to parse as a GenUI spec:
+    // taken over by content while streaming, reverted once the label arrives.
+    const block = stockCodeBlock('{"items":[{"type":"text","content":"你好，世界"}]', '')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-1', send), send)
+    try {
+      await tick()
+      expect(block.hasAttribute('data-genui-rendered')).toBe(true)
+      expect(row.querySelector('.genui-dom-fence')).not.toBeNull()
+      // Settle as ```json: the label says json → restore the stock block.
+      const label = block.querySelector('div')
+      label!.textContent = 'json'
+      row.removeAttribute('data-streaming')
+      await tick()
+      expect(block.hasAttribute('data-genui-rendered')).toBe(false)
+      expect(block.style.display).toBe('')
+      expect(row.querySelector('.genui-dom-fence')).toBeNull()
     } finally {
       dispose()
     }

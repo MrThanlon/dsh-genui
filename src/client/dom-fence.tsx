@@ -76,6 +76,15 @@ function infostringOf(block: Element): string | null {
   return null
 }
 
+/** The banner label's raw text (empty while streaming — the host renders the
+ * language label only once the reply settles). */
+function labelTextOf(block: Element): string {
+  for (const div of block.querySelectorAll('div')) {
+    if (div.childElementCount === 0) return div.textContent ?? ''
+  }
+  return ''
+}
+
 /** Raw fence body from the stock block's code surface. */
 function rawOf(block: Element): string {
   const pre = block.querySelector('pre')
@@ -178,12 +187,18 @@ export function installDomFenceRenderer(
 
   function renderBlock(block: HTMLElement): void {
     if (block.hasAttribute(PROCESSED)) return
-    if (infostringOf(block) === null) return
     const row = rowOf(block)
     if (row === null) return
+    const settled = isSettled(block)
+    // Settled blocks must carry the dsh-ui label. Streaming blocks cannot:
+    // the host renders the language label only once the reply settles
+    // (MarkdownText passes `lang={streaming ? undefined : lang}`), so during
+    // streaming the fence is identified by CONTENT — a partial parse that
+    // yields a GenUI node. A misidentified fence (e.g. a ```json block that
+    // happens to parse) is reverted at the settle transition below.
+    if (settled && infostringOf(block) === null) return
     const raw = rawOf(block)
     if (raw.trim() === '') return
-    const settled = isSettled(block)
     const { key, context } = contextOf(row, block, settled)
     const node: ReactNode | null = renderResolvedFenceNode(raw, key, context)
     // Null = no finished component yet (streaming half) or unrepairable:
@@ -232,6 +247,19 @@ export function installDomFenceRenderer(
       }
       const raw = rawOf(block)
       const settled = isSettled(block)
+      // Settle transition label re-verification: a streaming block was taken
+      // over by content, not by label. If the now-visible label exists and is
+      // NOT dsh-ui (a ```json fence that happened to parse), restore the
+      // stock block and drop the mount.
+      if (settled && !mount.lastSettled) {
+        const labelText = labelTextOf(block)
+        if (labelText !== '' && labelText !== 'dsh-ui') {
+          // A content-identified fence settled as another language (e.g. a
+          // ```json block that happened to parse): restore the stock block.
+          unmountBlock(block)
+          continue
+        }
+      }
       if (mount.lastRaw !== raw || mount.lastSettled !== settled) {
         const row = rowOf(block)
         const anchor = row ?? block.parentElement ?? block
