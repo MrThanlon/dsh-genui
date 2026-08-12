@@ -41,7 +41,7 @@ const ASSET_ROUTE_PATH = '/plugins/@deepseek-ai/dsh-genui/assets'
 /** Safe flat file names only: no slashes, no traversal, js assets only. */
 const ASSET_FILE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]*\.js$/
 
-/** The handler itself (registered via the optional httpServer probe). */
+/** The handler itself (registered via the optional webServer probe). */
 async function serveGenuiAsset(req: IncomingMessage, res: ServerResponse): Promise<void> {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     res.writeHead(405)
@@ -186,13 +186,13 @@ export function apply(ctx: Context): void {
   let assetsRegistered = false
   const tryRegisterAssets = (value: { register(route: unknown): unknown } | undefined): void => {
     if (assetsRegistered) return
-    const httpServer = value ?? ctx.reflect.get('httpServer', false) as { register(route: unknown): unknown } | undefined
-    if (httpServer === undefined) return
-    httpServer.register({ kind: 'prefix', path: ASSET_ROUTE_PATH, handler: serveGenuiAsset })
+    const webServer = value ?? ctx.reflect.get('webServer', false) as { register(route: unknown): unknown } | undefined
+    if (webServer === undefined) return
+    webServer.register({ kind: 'prefix', path: ASSET_ROUTE_PATH, handler: serveGenuiAsset })
     assetsRegistered = true
   }
   tryRegisterAssets(undefined)
   ctx.on('internal/service', (name: string, value: unknown) => {
-    if (name === 'httpServer') tryRegisterAssets(value as { register(route: unknown): unknown })
+    if (name === 'webServer') tryRegisterAssets(value as { register(route: unknown): unknown })
   })
 }

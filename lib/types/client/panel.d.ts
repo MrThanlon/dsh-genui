@@ -1,4 +1,4 @@
-import { type GenuiActionHandler } from '@deepseek-ai/dsh-client-ui-primitives';
+import { type GenuiActionHandler } from './action-context.ts';
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots';
 /** Injection face built per session in apply (scoped conversation send). */
 export interface GenuiPanelInjected {

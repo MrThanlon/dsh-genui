@@ -72,4 +72,16 @@ describe('genui:fence section', () => {
     const assembly = await ctx.systemPrompt.assemble({})
     expect(assembly.sections.map(s => s.name)).toContain('genui:fence')
   })
+
+  it('registers the asset route when webServer binds after the plugin', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    await ctx.plugin(GenUI)
+    const routes: unknown[] = []
+    ctx.provide('webServer', { register: (route: unknown) => { routes.push(route) } })
+    expect(routes).toEqual([expect.objectContaining({
+      kind: 'prefix',
+      path: '/plugins/@deepseek-ai/dsh-genui/assets',
+    })])
+  })
 })

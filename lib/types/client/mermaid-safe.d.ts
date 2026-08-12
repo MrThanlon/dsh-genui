@@ -28,5 +28,13 @@ export declare function assertSafeSvg(svg: string): void;
  * placeholder before quoting and restored verbatim afterwards, so the quote
  * pass can neither corrupt it nor be thrown off by inserted quotes
  * elsewhere on the line.
+ *
+ * Pipe-style edge labels (`-->|文本|`) are the opposite: an UNQUOTED pipe
+ * label containing `[` or `]` breaks the parser ("Parse error", observed
+ * live with `-->|6. 用户交互 → [genui-action]|`) because the brackets are
+ * node grammar. Quoting the label text is display-neutral (mermaid renders
+ * `-->|"文本"|` without the quotes) and parses. These spans are masked too,
+ * so the node-label quote pass below cannot reach inside them and produce
+ * nested quotes, and restored last.
  */
 export declare function repairMermaidSource(code: string): string;
