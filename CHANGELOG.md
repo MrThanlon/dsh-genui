@@ -5,7 +5,7 @@
 - **仓库随 0813 内测收编维持组织内私有**：`dsh-genui` 保持在 `dsh-external` 组织（个人账号迁移已回滚；组织成员可见、对外私有），GitHub topics 补上内测群要求的 `dsh`、`dsh-plugin`（原有 `marisa-plugin`/`web-ui`/`generative-ui` 保留）；README/安装脚本/e2e 中安装与 clone URL、私有仓库前提说明同步更新（私有仓库需 gh 登录）
 - **发布渠道红线落地**：package.json 设 `private: true`（`npm/pnpm publish` 被硬拒绝）；npm 上无任何已发布版本（`@deepseek-ai/dsh-genui` / `dsh-genui` 均 404）；分发只走私有 Git URL，不发布 npm/Workshop 等任何公开渠道
 ### 修复
-- **流式渲染回归（0812-final 宿主）**：0812-final 快照移除了 fence-registry 扩展点，插件降级 DOM 通道后只等 `data-streaming` 落定才挂载——dsh-ui 围栏要等整段回复写完才渲染。DOM 通道升级为流式接管：首个完成组件即挂载、正文增长实时重渲染、pre-paint 手术修复（宿主 React 重渲染抹掉外来容器/重置隐藏时在绘制前补回，防原始 JSON 闪回）、settle 转换才带稳定 source 身份发布面板与持久状态；新增 4 个流式回归测试（流式即挂载/无完成组件保持代码块/面板 settle 后发布/宿主重渲染自愈）
+- **流式渲染回归（0812-final 宿主）**：0812-final 快照移除了 fence-registry 扩展点，插件降级 DOM 通道后只等 `data-streaming` 落定才挂载——dsh-ui 围栏要等整段回复写完才渲染。DOM 通道升级为流式接管：首个完成组件即挂载、正文增长实时重渲染、pre-paint 手术修复（宿主 React 重渲染抹掉外来容器/重置隐藏时在绘制前补回，防原始 JSON 闪回）、settle 转换才带稳定 source 身份发布面板与持久状态；**流式期间宿主不渲染语言标签**（MarkdownText 传 `lang={streaming ? undefined : lang}`），改为按内容识别围栏（partial 解析出 GenUI 组件树即接管），settle 后按标签复核（误识别的其他语言围栏自动还原为代码块）；新增 6 个流式回归测试（流式即挂载/无完成组件保持代码块/面板 settle 后发布/宿主重渲染自愈/空标签内容识别/异语言 settle 还原）
 
 ### 新增
 - **DOM 渲染通道（纯插件化）**：fence 渲染改为双模——宿主提供 fence-registry 扩展点（契约线）时走原 registry 通道；原版 DSH（无扩展点）时启用 DOM 观察通道：MutationObserver 盯会话内 `.md-code-block`（稳定类名），`[data-streaming]` 落定后按语言标签找到 `dsh-ui` 围栏，解析 JSON 并以插件自有 React 根挂载同一套渲染管线（react-dom/client 平台模块）；原始代码块隐藏保留以承接流式更新，卸载/分支切换自动还原。**零宿主代码改动：原版快照 + 本插件即可用**，同时兼容契约线宿主（自动探测选择）
@@ -16,7 +16,7 @@
 - tsdown externals 增加 `react-dom/client`（平台模块表已有，零体积）
 - vitest 别名修正 `dsh-invariants` → `packages/runtime-diagnostics/invariants`（0812-final 线路径）
 ### 测试
-- 350 全绿（+8 DOM 通道：挂载/语言过滤/落定门控/坏体保块/动作转发(300ms 防抖)/panel 发布/卸载还原/无会话渲染）；registry 通道测试经 setup 特征门控在两条宿主线上均可运行
+- 355 全绿（+13 DOM 通道：挂载/语言过滤/落定门控/坏体保块/动作转发(300ms 防抖)/panel 发布/卸载还原/无会话渲染 + 6 个流式回归）；registry 通道测试经 setup 特征门控在两条宿主线上均可运行
 
 
 ## [0.7.1] - 2026-08-13
