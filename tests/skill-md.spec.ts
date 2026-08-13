@@ -6,13 +6,14 @@
 // This test pins the file against the SAME parser the host uses.
 import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const require = createRequire('/Users/changfenhuang/.dsh/source/staging-20260811T152241Z/packages/skill/skill-local/lib/index.js')
+const dshRoot = process.env.DSH_ROOT ?? resolve(process.cwd(), '../../.dsh/source/current')
+const require = createRequire(join(dshRoot, 'packages/skill/skill-filesystem/lib/index.js'))
 const { parse } = require('yaml') as { parse: (text: string) => unknown }
 
-/** Replicate skill-local's parseFrontmatter: leading `---`, body until the
+/** Replicate skill-filesystem's parseFrontmatter: leading `---`, body until the
  * next `---` line. */
 function frontmatterYaml(raw: string): string {
   const lines = raw.slice(4).split('\n')
