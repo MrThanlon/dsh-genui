@@ -10,11 +10,13 @@
  * builds byte-identical client.js every time.
  */
 import { readFile } from 'node:fs/promises'
-import { basename, dirname, resolve as resolvePath } from 'node:path'
+import { basename, dirname, relative, resolve as resolvePath } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
 const ID = '@omdsh-dev/dsh-genui'
+const PROJECT_ROOT = dirname(fileURLToPath(import.meta.url))
 
 /** Module-table entries this bundle may leave external: platform seed rows
  * (react family, cordis, ui-primitives) answered by the loader's require.
@@ -36,15 +38,17 @@ function cssModulesPlugin(): NonNullable<UserConfig['plugins']>[number] {
       // The bundle builds straight from src, so the importer's directory is
       // always the source tree — no lib/types backtracking needed.
       const abs = importer !== undefined ? resolvePath(dirname(importer), source) : source
-      return CSS_VIRTUAL_PREFIX + abs + CSS_VIRTUAL_SUFFIX
+      const stableId = relative(PROJECT_ROOT, abs).replaceAll('\\', '/')
+      return CSS_VIRTUAL_PREFIX + stableId + CSS_VIRTUAL_SUFFIX
     },
     async load(virtualId: string) {
       if (!virtualId.startsWith(CSS_VIRTUAL_PREFIX)) return null
-      const fileId = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const stableId = virtualId.slice(CSS_VIRTUAL_PREFIX.length, -CSS_VIRTUAL_SUFFIX.length)
+      const fileId = resolvePath(PROJECT_ROOT, stableId)
       this.addWatchFile(fileId)
       const source = await readFile(fileId)
       const { code, exports: cssExports } = transform({
-        filename: fileId,
+        filename: stableId,
         code: source,
         cssModules: { pattern: '[hash]_[local]' },
         minify: true,

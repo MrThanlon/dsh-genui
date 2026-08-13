@@ -6,6 +6,7 @@
 - **发布前最终改名**：初版 OSS 包名 `@dsh-external/dsh-genui` → **`@omdsh-dev/dsh-genui`**（与仓库组织一致）；运行时硬编码三处（`PACKAGE_NAME`/`ASSET_ROUTE_PATH`/`PLUGIN_ID`）、cordis.patch.yml、README/安装脚本/e2e/测试同步改名，253 测试全绿
 - **文档全面转公开**：README/安装脚本/e2e 同步更新——npm 组织尚未创建前以公开 git URL 安装为准，无需 gh/npm 登录或内测资格；双通道渲染描述不再依赖内测快照名
 - **peerDeps 对齐 rc.6（0.1.0）+ cordis 4.0.1 稳定版**：8 个 `dsh-*` peer 包 `^0.0.1-rc.1 → ^0.1.0-rc.6`、`@deepseek-ai/cordis` `^4.0.1-rc.1 → ^4.0.1`；代码零改动（运行时值 import 仅 cordis + dsh-client-ui-primitives，其余均 type-only），rc.6 类型下编译与 253 测试全绿；`pnpm-workspace.yaml` 补 63 条 `minimumReleaseAgeExclude`（rc.6 发布未满 pnpm supply-chain 最小年龄，消费者安装必需的白名单）
+- **跨机器构建可复现**：CSS Modules 哈希只使用仓库内相对路径，不再混入 `/Users/...` 或 `/home/runner/...`；macOS 与 GitHub Linux 对同一源码生成相同 `lib/client.js`
 
 ## [0.7.2] - 2026-08-13
 ### 发布
