@@ -14,7 +14,7 @@
  *                        [--tarball <路径> --tarball-sha256 <sha>] [--smoke]
  *
  *   --install link    （默认）装当前工作区，测的就是当前代码
- *   --install git     从 git URL 安装（私有仓库，需已 gh 登录）
+ *   --install git     从 git URL 安装（公开仓库）
  *   --install tarball 必须给 --tarball 绝对路径与 --tarball-sha256（防假安装）
  *   --smoke           不要求模型 Key：安装 → 启动 → 首页/client.js 200 →
  *                     无页面异常 → 插件 boot；不跑模型链路
@@ -106,8 +106,8 @@ const logTail = async (n = 30) => {
 try {
   // ── 安装插件 ────────────────────────────────────────────────────────────
   if (INSTALL === 'git') {
-    log('安装插件（git+https，私有仓库）...')
-    const r = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', 'git+https://github.com/dsh-external/dsh-genui.git'], { env, stdio: 'inherit' })
+    log('安装插件（git+https，公开仓库）...')
+    const r = spawnSync(DSH_BIN, ['plugin', '--profile', 'web', 'add', 'git+https://github.com/omdsh-dev/dsh-genui.git'], { env, stdio: 'inherit' })
     if (r.status !== 0) fail('git URL 安装失败（见上方输出）')
   } else if (INSTALL === 'tarball') {
     log(`安装插件（tarball ${TARBALL}）...`)
@@ -171,7 +171,7 @@ try {
   await page.waitForTimeout(5000)
 
   // client.js 必须 200（插件 bundle 可加载）；404 直接失败
-  const clientRes = await fetch(`${BASE}/plugins/@deepseek-ai/dsh-genui/client.js`)
+  const clientRes = await fetch(`${BASE}/plugins/@dsh-external/dsh-genui/client.js`)
   if (!clientRes.ok) {
     await page.screenshot({ path: join(artifactsDir, 'e2e-fail-client404.png') })
     await logTail()

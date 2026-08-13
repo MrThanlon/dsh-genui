@@ -1,7 +1,7 @@
 /**
  * Basic display family: avatar palette, and the local click-feedback button
  * (the actionable-button chip). Used by the render dispatcher.
- * @module @deepseek-ai/dsh-genui/client/blocks/basic
+ * @module @dsh-external/dsh-genui/client/blocks/basic
  */
 import { type ReactNode } from 'react';
 export declare function avatarColor(name: string): string;

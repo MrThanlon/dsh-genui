@@ -81,7 +81,7 @@ describe('genui:fence section', () => {
     ctx.provide('webServer', { register: (route: unknown) => { routes.push(route) } })
     expect(routes).toEqual([expect.objectContaining({
       kind: 'prefix',
-      path: '/plugins/@deepseek-ai/dsh-genui/assets',
+      path: '/plugins/@dsh-external/dsh-genui/assets',
     })])
   })
 })

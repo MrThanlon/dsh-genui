@@ -1,7 +1,7 @@
 /**
  * Chart family: categorical palette, the sortable table, and the bars / line
  * / donut renderers. All local-first; no model round trips.
- * @module @deepseek-ai/dsh-genui/client/blocks/charts
+ * @module @dsh-external/dsh-genui/client/blocks/charts
  */
 import { useState } from 'react'
 import css from '../GenuiBlock.module.css'

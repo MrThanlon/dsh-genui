@@ -3,7 +3,7 @@
  * registry (grouped radios → submit grading). Lives OUTSIDE GenuiBlock.tsx so
  * the per-family block modules can import the types without a cycle back
  * into the block shell.
- * @module @deepseek-ai/dsh-genui/client/blocks/state
+ * @module @dsh-external/dsh-genui/client/blocks/state
  */
 import type { GenuiSpec } from '../spec.ts'
 

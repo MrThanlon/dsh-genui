@@ -25,8 +25,8 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 
 本插件自带**两套渲染通道**，启动时自动选择，不依赖特定宿主版本：
 
-- **Registry 通道**：宿主提供 `fence-registry` 扩展点（0810/0811 内测构建）时，围栏经宿主流式渲染管线注册，行为与宿主无缝；
-- **DOM 通道**：宿主没有该扩展点（包括 0812-final 快照与原版 DSH）时，插件观察会话 DOM 自行挂载渲染树。自 0.7.2 起**支持流式渲染**：模型写到哪渲染到哪，首个完成的组件立即出现，不用等整段回复写完。
+- **Registry 通道**：宿主提供 `fence-registry` 扩展点（新版 dsh 构建）时，围栏经宿主流式渲染管线注册，行为与宿主无缝；
+- **DOM 通道**：宿主没有该扩展点（包括原版 DSH 与旧版构建）时，插件观察会话 DOM 自行挂载渲染树。自 0.7.2 起**支持流式渲染**：模型写到哪渲染到哪，首个完成的组件立即出现，不用等整段回复写完。
 
 无论走哪条通道，组件、交互、面板、持久化行为完全一致。
 
@@ -39,18 +39,20 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 | "本月收入 ¥128,430，环比 +12.4%，建议关注转化率。" | 一行分析 + 旁边直接渲染：收入/订单/转化率三张统计卡、趋势图、进度条 |
 | 想再看别的？再打一段字问一遍 | 面板上就有「刷新」「切换视图」按钮，点一下，模型更新数据 |
 
-## 🚀 快速开始（内测成员）
+## 🚀 快速开始
 
 前置条件，缺一不可：
 
-1. **dsh 是最新内测版**：需含 `fence-registry` 扩展点（2026-08-09 之后的内测构建已加入）。旧版装上会 fence 不渲染或聊天白屏——先按上方「dsh 版本要求」更新 dsh 再装
+1. **dsh 已安装**（开源版任意构建均可——插件启动时自动选择渲染通道，见上文「双通道渲染」）
 2. **`pnpm` 在 PATH 上**：`dsh plugin` 命令依赖它。没有就 `corepack enable`（或 `npm i -g pnpm`），然后**新开一个终端**，确认 `pnpm -v` 有输出
-3. **GitHub 已登录**：插件仓库是私有的（`dsh-external/dsh-genui`），需要 `gh auth login` 或已配置 git credential helper
 
 安装（一行命令，自动带上全部依赖）：
 
 ```sh
-dsh plugin --profile web add git+https://github.com/dsh-external/dsh-genui.git
+# npm 安装（推荐）
+dsh plugin --profile web add @dsh-external/dsh-genui
+# 或 git 安装（公开仓库）
+dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-genui.git
 ```
 
 > ⚠️ **别用 `link:` 装一个刚 clone 的目录**——`link:` 不会安装插件的依赖（mermaid / three / react），装完渲染器会挂。请用上面的 git URL 方式；只有本地开发迭代才用 link:（见下文）。
@@ -62,7 +64,7 @@ dsh plugin --profile web add git+https://github.com/dsh-external/dsh-genui.git
 clone 后直接跑，脚本会检查上述三个前置、执行安装、并提示重启：
 
 ```sh
-git clone https://github.com/dsh-external/dsh-genui.git
+git clone https://github.com/omdsh-dev/dsh-genui.git
 cd dsh-genui
 ./scripts/install.sh
 ```
@@ -123,12 +125,12 @@ dsh plugin --profile web add link:$PWD
 
 ## ❓ 常见问题
 
-- **显示成代码块？** 查三处：dsh 版本带 fence-registry（见顶部「版本要求」，旧版会不渲染）、`dsh plugin --profile web list` 里有本插件、重启 + 硬刷新。
-- **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧——先更新 dsh 再重装插件，见顶部「版本要求」。
+- **显示成代码块？** 查三处：dsh 版本带 fence-registry（见顶部「双通道渲染」，无扩展点的构建走 DOM 通道兜底）、`dsh plugin --profile web list` 里有本插件、重启 + 硬刷新。
+- **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧——先更新 dsh 再重装插件。
 - **`dsh: pnpm not found on PATH`？** 装 pnpm 后**新开终端**再试（`corepack enable` 或 `npm i -g pnpm`）。
-- **安装时卡在 git 凭据/404？** 仓库是私有的（`dsh-external/dsh-genui`），先 `gh auth login`（或配置 git credential helper / SSH），再用 git URL 方式安装。
-- **能 npm install 吗？** 不能——插件不发布 npm（package.json 已设 `private: true`，`npm/pnpm publish` 会被直接拒绝），只走私有 Git URL 安装：`dsh plugin --profile web add git+https://github.com/dsh-external/dsh-genui.git`。
-- **装了但 scene3d/mermaid 不渲染？** 引擎（mermaid / three）不再内联进 client.js——它们在首次用到时按需加载（`/plugins/@deepseek-ai/dsh-genui/assets/*.js`，插件自带 HTTP 路由托管）。先重启 dsh web + 硬刷新（Cmd+Shift+R）；仍不渲染就卸掉重装（`dsh plugin --profile web remove @deepseek-ai/dsh-genui` 后再 add）。旧版宿主缺少资产路由时会降级显示源码/加载失败提示，更新 dsh 即可。
+- **安装时卡在 git 凭据/404？** 仓库是公开的（`omdsh-dev/dsh-genui`），git URL 安装无需任何登录；卡住通常是网络/代理问题，重试或改用 npm 方式。
+- **能 npm install 吗？** 能——插件已发布 npm（`@dsh-external/dsh-genui`）：`dsh plugin --profile web add @dsh-external/dsh-genui`。
+- **装了但 scene3d/mermaid 不渲染？** 引擎（mermaid / three）不再内联进 client.js——它们在首次用到时按需加载（`/plugins/@dsh-external/dsh-genui/assets/*.js`，插件自带 HTTP 路由托管）。先重启 dsh web + 硬刷新（Cmd+Shift+R）；仍不渲染就卸掉重装（`dsh plugin --profile web remove @dsh-external/dsh-genui` 后再 add）。旧版宿主缺少资产路由时会降级显示源码/加载失败提示，更新 dsh 即可。
 - **模型不主动输出？** 重启后新会话生效；或直接说"用 dsh-ui 输出"。
 - **clone 后没有 lib/？** `pnpm install && pnpm run check` 自己构建。
 

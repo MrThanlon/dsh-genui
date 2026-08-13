@@ -1,5 +1,5 @@
 #!/bin/sh
-# dsh-genui 一键安装脚本（私有仓库：dsh-external/dsh-genui，需 gh 登录）
+# dsh-genui 一键安装脚本（公开仓库：omdsh-dev/dsh-genui，git URL 安装无需登录）
 #
 # 用法:
 #   ./scripts/install.sh            # 装进默认 web profile
@@ -23,8 +23,8 @@ if [ "$fail_early" = 1 ]; then
   exit 1
 fi
 
-REPO_URL="git+https://github.com/dsh-external/dsh-genui.git"
-GIT_URL="https://github.com/dsh-external/dsh-genui.git"
+REPO_URL="git+https://github.com/omdsh-dev/dsh-genui.git"
+GIT_URL="https://github.com/omdsh-dev/dsh-genui.git"
 DSH_HOME="${DSH_HOME:-$HOME/.dsh}"
 # Web 会话的 skill 服务从 agentsHome（默认 ~/.agents）发现技能，dshHome 的
 # ~/.dsh/skills 在部分宿主演进中不再进入会话目录 —— 两个根都同步，模型从哪
@@ -93,7 +93,7 @@ sync_skill() {
   SKILL_FILE=$(cd "$DSH_HOME" && DSH_HOME="$DSH_HOME" PROFILE="$PROFILE" node -e "
 const path = require('path')
 try {
-  const pkg = require.resolve('@deepseek-ai/dsh-genui/package.json', { paths: [process.env.DSH_HOME + '/profiles/' + process.env.PROFILE] })
+  const pkg = require.resolve('@dsh-external/dsh-genui/package.json', { paths: [process.env.DSH_HOME + '/profiles/' + process.env.PROFILE] })
   console.log(path.join(path.dirname(pkg), 'SKILL.md'))
 } catch { process.exit(1) }
 " 2>/dev/null || true)
@@ -109,7 +109,7 @@ echo "${BOLD}== dsh-genui 安装（profile: $PROFILE）==${NC}"
 
 # ── 前置 1: dsh ────────────────────────────────────────────────────────────
 if ! command -v dsh >/dev/null 2>&1; then
-  fail "未找到 dsh 命令。请先安装 DeepSeek Harness（最新内测版），再跑本脚本。"
+  fail "未找到 dsh 命令。请先安装 DeepSeek Harness（开源版），再跑本脚本。"
 fi
 ok "dsh: $(dsh --version 2>/dev/null || echo present)"
 
@@ -119,18 +119,18 @@ if ! command -v pnpm >/dev/null 2>&1; then
 fi
 ok "pnpm: $(pnpm --version)"
 
-# ── 前置 3: 私有仓库凭据（分发只走私有 Git URL，不公开发布）───────────────────────────────
+# ── 前置 3: 仓库可访问（公开仓库，无需登录；只验网络可达）─────────────────────────────
 if ! GIT_TERMINAL_PROMPT=0 git ls-remote "$GIT_URL" HEAD >/dev/null 2>&1; then
-  fail "无法访问私有仓库 $GIT_URL —— 请先 'gh auth login'（或配置 git credential helper / SSH）。"
+  fail "无法访问仓库 $GIT_URL —— 请检查网络/代理后重试。"
 fi
-ok "GitHub 私有仓库可访问"
+ok "GitHub 公开仓库可访问"
 
 # ── 已装检测（幂等）────────────────────────────────────────────────────────
 PROFILE_PKG="$DSH_HOME/profiles/$PROFILE/package.json"
 if [ -f "$PROFILE_PKG" ] && grep -q "dsh-genui" "$PROFILE_PKG" 2>/dev/null; then
   warn "插件已在 profile '$PROFILE' 中。"
   sync_skill
-  printf "  想重装就手动执行: dsh plugin --profile %s remove @deepseek-ai/dsh-genui，再跑本脚本。\n" "$PROFILE"
+  printf "  想重装就手动执行: dsh plugin --profile %s remove @dsh-external/dsh-genui，再跑本脚本。\n" "$PROFILE"
   printf "  否则直接: 重启 dsh web + 硬刷新 即可验证。\n"
   exit 0
 fi

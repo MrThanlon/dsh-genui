@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.8.0] - 2026-08-13
+### 发布
+- **OSS 开源首发**：DSH 正式开源后 `dsh-genui` 随生态开放——仓库迁移至 `omdsh-dev` 组织并公开（topics 保持 `dsh`、`dsh-plugin`）；包名改为 **`@dsh-external/dsh-genui`**（`@deepseek-ai` 为官方 scope，第三方插件不再占用），移除 `private: true`，npm 公开发布
+- **文档全面转公开**：README/安装脚本/e2e 同步更新——安装以 npm 为主（`dsh plugin --profile web add @dsh-external/dsh-genui`），git URL 公开可装、无需 gh 登录或内测资格；FAQ 移除「不能 npm install」「私有仓库凭据」条目；双通道渲染描述不再依赖内测快照名
+
 ## [0.7.2] - 2026-08-13
 ### 发布
 - **仓库随 0813 内测收编维持组织内私有**：`dsh-genui` 保持在 `dsh-external` 组织（个人账号迁移已回滚；组织成员可见、对外私有），GitHub topics 补上内测群要求的 `dsh`、`dsh-plugin`（原有 `marisa-plugin`/`web-ui`/`generative-ui` 保留）；README/安装脚本/e2e 中安装与 clone URL、私有仓库前提说明同步更新（私有仓库需 gh 登录）

@@ -8,7 +8,7 @@
  *
  * The pure source utilities stay statically exported from mermaid-safe so
  * tests (and any consumer) can use them without the engine.
- * @module @deepseek-ai/dsh-genui/client/mermaid-lazy
+ * @module @dsh-external/dsh-genui/client/mermaid-lazy
  */
 import { loadGenuiAsset } from './asset-loader.ts'
 export { assertSafeSvg, repairMermaidSource } from './mermaid-safe.ts'

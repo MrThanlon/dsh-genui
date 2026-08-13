@@ -16,9 +16,9 @@ jobs:
         #  - Node 24 + main：前向集成（拉当前 main 的 HEAD）。
         include:
           - node: 22
-            host-ref: "main" # TODO: 宿主阶段 1 契约进入受支持分支后填完整 SHA
+            host-ref: "master" # OSS 宿主默认分支
           - node: 24
-            host-ref: "main"
+            host-ref: "master"
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
@@ -39,12 +39,10 @@ jobs:
         run: |
           DSH_ROOT="$GITHUB_WORKSPACE/../../.dsh/source/current"
           mkdir -p "$(dirname "$DSH_ROOT")"
-          git clone --depth 1 "https://x-access-token:${{ secrets.DSH_REPO_TOKEN }}@github.com/dsh2026/test-taekchef.git" "$DSH_ROOT"
+          git clone --depth 1 "https://github.com/deepseek-ai/deepseek-harness.git" "$DSH_ROOT"
           git -C "$DSH_ROOT" checkout "${{ matrix.host-ref }}"
           test -f "$DSH_ROOT/packages/client/ui-primitives/src/index.ts" || { echo "::error::宿主预检失败：ui-primitives 源码缺失"; exit 1; }
           echo "HOST_SHA=$(git -C "$DSH_ROOT" rev-parse HEAD)" >> "$GITHUB_ENV"
-        env:
-          DSH_REPO_TOKEN: ${{ secrets.DSH_REPO_TOKEN }}
 
       - name: Install + build host
         working-directory: $GITHUB_WORKSPACE/../../.dsh/source/current

@@ -11,7 +11,7 @@
  *
  * Bounded: at most MAX_BLOCKS entries, LRU-evicted on write; each block's
  * payload is small (answers map + a few field values).
- * @module @deepseek-ai/dsh-genui/client/interaction-store
+ * @module @dsh-external/dsh-genui/client/interaction-store
  */
 
 /** Durable state of one UI block. */
