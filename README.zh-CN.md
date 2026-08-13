@@ -169,6 +169,10 @@ DEEPSEEK_API_KEY=sk-... node scripts/e2e.mjs --install git   # 朋友路径（gi
 
 测试解析 dsh 源码（`vitest.config.ts` 的 `DSH_ROOT`，默认 `~/.dsh/source/current`）。
 
+## 🔗 友情链接
+
+- [Linux.do](https://linux.do)
+
 ---
 
 📄 License: MIT

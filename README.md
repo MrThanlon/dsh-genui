@@ -169,6 +169,10 @@ Prereqs: `dsh`/`pnpm` on PATH, `DEEPSEEK_API_KEY`, and the main repo's web build
 
 Tests parse the dsh source (`vitest.config.ts`'s `DSH_ROOT`, default `~/.dsh/source/current`).
 
+## 🔗 Friendly links
+
+- [Linux.do](https://linux.do)
+
 ---
 
 📄 License: MIT
