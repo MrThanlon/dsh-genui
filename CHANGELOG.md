@@ -4,6 +4,7 @@
 ### 发布
 - **OSS 开源首发**：DSH 正式开源后 `dsh-genui` 随生态开放——仓库迁移至 `omdsh-dev` 组织并公开（topics 保持 `dsh`、`dsh-plugin`）；包名改为 **`@dsh-external/dsh-genui`**（`@deepseek-ai` 为官方 scope，第三方插件不再占用），移除 `private: true`，npm 公开发布
 - **文档全面转公开**：README/安装脚本/e2e 同步更新——安装以 npm 为主（`dsh plugin --profile web add @dsh-external/dsh-genui`），git URL 公开可装、无需 gh 登录或内测资格；FAQ 移除「不能 npm install」「私有仓库凭据」条目；双通道渲染描述不再依赖内测快照名
+- **peerDeps 对齐 rc.6（0.1.0）+ cordis 4.0.1 稳定版**：8 个 `dsh-*` peer 包 `^0.0.1-rc.1 → ^0.1.0-rc.6`、`@deepseek-ai/cordis` `^4.0.1-rc.1 → ^4.0.1`；代码零改动（运行时值 import 仅 cordis + dsh-client-ui-primitives，其余均 type-only），rc.6 类型下编译与 253 测试全绿；`pnpm-workspace.yaml` 补 63 条 `minimumReleaseAgeExclude`（rc.6 发布未满 pnpm supply-chain 最小年龄，消费者安装必需的白名单）
 
 ## [0.7.2] - 2026-08-13
 ### 发布
