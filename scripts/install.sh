@@ -66,9 +66,9 @@ sync_skill_to() {
       return 0
     fi
     if [ -e "$RESOLVED" ] || [ -L "$RESOLVED" ]; then
-      fail "目标 $DEST 是指向其他文件的符号链接（-> $RESOLVED），拒绝写入。请手动处理后重试。"
+      fail "目标 $DEST 是指向其他文件的符号链接（-> ${RESOLVED}），拒绝写入。请手动处理后重试。"
     fi
-    fail "目标 $DEST 是悬空符号链接（-> $RESOLVED），拒绝写入。请手动处理后重试。"
+    fail "目标 $DEST 是悬空符号链接（-> ${RESOLVED}），拒绝写入。请手动处理后重试。"
   fi
   if [ -d "$DEST" ]; then
     fail "目标 $DEST 是目录，拒绝覆盖。请手动处理后重试。"
@@ -81,7 +81,7 @@ sync_skill_to() {
   cp "$SKILL_FILE" "$TMP_FILE"
   mv "$TMP_FILE" "$DEST"
   trap - EXIT HUP INT TERM
-  ok "skill 已同步到 $DEST_LABEL（$SKILL_FILE）"
+  ok "skill 已同步到 ${DEST_LABEL}（${SKILL_FILE}）"
 }
 
 sync_skill() {
@@ -105,7 +105,7 @@ try {
   sync_skill_to "$SKILL_FILE" "$AGENTS_HOME/skills/genui/SKILL.md" "AGENTS_HOME/skills/genui"
 }
 
-echo "${BOLD}== dsh-genui 安装（profile: $PROFILE）==${NC}"
+echo "${BOLD}== dsh-genui 安装（profile: ${PROFILE}）==${NC}"
 
 # ── 前置 1: dsh ────────────────────────────────────────────────────────────
 if ! command -v dsh >/dev/null 2>&1; then

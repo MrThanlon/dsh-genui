@@ -55,9 +55,7 @@ Prerequisites — all required:
 Install (one command, all dependencies included):
 
 ```sh
-# npm install (recommended)
-dsh plugin --profile web add @omdsh-dev/dsh-genui
-# or git install (public repo)
+# Public GitHub install (works without an npm account)
 dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-genui.git
 ```
 
@@ -134,8 +132,7 @@ The core render package stays light (≈110 KB min / 28 KB gzip); the mermaid an
 - **Rendering as a code block?** Check three things: your dsh build has fence-registry (see "dual-channel rendering" at the top — builds without the extension point fall back to the DOM channel), `dsh plugin --profile web list` shows this plugin, restart + hard refresh.
 - **Chat UI goes blank when rendering a dsh-ui fence?** Your dsh is too old — update dsh first, then reinstall the plugin.
 - **`dsh: pnpm not found on PATH`?** Install pnpm, then **open a new terminal** and retry (`corepack enable` or `npm i -g pnpm`).
-- **Stuck on git credentials / 404 during install?** The repo is public (`omdsh-dev/dsh-genui`) — git URL install needs no login; stalls are usually network/proxy issues, retry or use the npm route.
-- **Can I `npm install` it?** Yes — published as `@omdsh-dev/dsh-genui`: `dsh plugin --profile web add @omdsh-dev/dsh-genui`.
+- **Stuck on git credentials / 404 during install?** The repo is public (`omdsh-dev/dsh-genui`) — the git URL above needs no login; a 404 for `@omdsh-dev/dsh-genui` means the npm package has not been published yet.
 - **Installed but scene3d/mermaid don't render?** The engines (mermaid / three) are no longer inlined in client.js — they load on demand the first time they're used (`/plugins/@omdsh-dev/dsh-genui/assets/*.js`, hosted by the plugin's own HTTP routes). First restart dsh web + hard refresh (Cmd+Shift+R); still broken, remove and reinstall (`dsh plugin --profile web remove @omdsh-dev/dsh-genui`, then add again). Hosts without the asset routes degrade to source/load-error hints — update dsh.
 - **Model not outputting fences?** New sessions pick it up after a restart; or just say "output it with dsh-ui".
 - **No lib/ after cloning?** Build it yourself: `pnpm install && pnpm run check`.

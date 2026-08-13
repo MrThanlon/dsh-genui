@@ -55,9 +55,7 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 安装（一行命令，自动带上全部依赖）：
 
 ```sh
-# npm 安装（推荐）
-dsh plugin --profile web add @omdsh-dev/dsh-genui
-# 或 git 安装（公开仓库）
+# GitHub 公开仓库安装（无需 npm 账号）
 dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-genui.git
 ```
 
@@ -134,8 +132,7 @@ dsh plugin --profile web add link:$PWD
 - **显示成代码块？** 查三处：dsh 版本带 fence-registry（见顶部「双通道渲染」，无扩展点的构建走 DOM 通道兜底）、`dsh plugin --profile web list` 里有本插件、重启 + 硬刷新。
 - **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧——先更新 dsh 再重装插件。
 - **`dsh: pnpm not found on PATH`？** 装 pnpm 后**新开终端**再试（`corepack enable` 或 `npm i -g pnpm`）。
-- **安装时卡在 git 凭据/404？** 仓库是公开的（`omdsh-dev/dsh-genui`），git URL 安装无需任何登录；卡住通常是网络/代理问题，重试或改用 npm 方式。
-- **能 npm install 吗？** 能——插件已发布 npm（`@omdsh-dev/dsh-genui`）：`dsh plugin --profile web add @omdsh-dev/dsh-genui`。
+- **安装时卡在 git 凭据/404？** 仓库是公开的（`omdsh-dev/dsh-genui`），上面的 git URL 无需登录；`@omdsh-dev/dsh-genui` 返回 404，表示 npm 包尚未发布。
 - **装了但 scene3d/mermaid 不渲染？** 引擎（mermaid / three）不再内联进 client.js——它们在首次用到时按需加载（`/plugins/@omdsh-dev/dsh-genui/assets/*.js`，插件自带 HTTP 路由托管）。先重启 dsh web + 硬刷新（Cmd+Shift+R）；仍不渲染就卸掉重装（`dsh plugin --profile web remove @omdsh-dev/dsh-genui` 后再 add）。旧版宿主缺少资产路由时会降级显示源码/加载失败提示，更新 dsh 即可。
 - **模型不主动输出？** 重启后新会话生效；或直接说"用 dsh-ui 输出"。
 - **clone 后没有 lib/？** `pnpm install && pnpm run check` 自己构建。
