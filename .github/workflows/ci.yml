@@ -45,7 +45,7 @@ jobs:
           echo "HOST_SHA=$(git -C "$DSH_ROOT" rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Install + build host
-        working-directory: $GITHUB_WORKSPACE/../../.dsh/source/current
+        working-directory: ${{ github.workspace }}/../../.dsh/source/current
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
@@ -56,7 +56,7 @@ jobs:
       - name: Check (typecheck + full tests + build)
         run: pnpm run check
         env:
-          DSH_ROOT: $GITHUB_WORKSPACE/../../.dsh/source/current
+          DSH_ROOT: ${{ github.workspace }}/../../.dsh/source/current
 
       - name: Pack verification gate
         run: node scripts/verify-pack.mjs
@@ -75,8 +75,8 @@ jobs:
         run: |
           node scripts/e2e.mjs --smoke --install link --port 3190
         env:
-          DSH_ROOT: $GITHUB_WORKSPACE/../../.dsh/source/current
-          DSH_BIN: $GITHUB_WORKSPACE/../../.dsh/source/current/apps/cli/lib/bin.js
+          DSH_ROOT: ${{ github.workspace }}/../../.dsh/source/current
+          DSH_BIN: ${{ github.workspace }}/../../.dsh/source/current/apps/cli/lib/bin.js
 
       - name: Archive e2e artifacts
         if: failure()
