@@ -674,7 +674,7 @@ test -z "$(find lib/types -type f \( -name '*.js' -o -name '*.map' \) -print -qu
   - `cordis.patch.yml`
 - `package.json` 与 `LICENSE` 由 npm 强制包含，不需要写进 `files`，但必须列入 pack 校验的允许清单。
 - 不删除仓库源码，只是不发布源码逃生口。
-- 当前组织代码搜索没有 `@dsh-external/dsh-genui/src/*` 消费者；不增加兼容导出。
+- 当前组织代码搜索没有 `@omdsh-dev/dsh-genui/src/*` 消费者；不增加兼容导出。
 
 新增一个小型 `scripts/verify-pack.mjs`，读取 `npm pack --dry-run --json` 并断言：
 

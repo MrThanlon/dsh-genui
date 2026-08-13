@@ -37,13 +37,13 @@ function makeEnv(): Env {
     execFileSync('chmod', ['+x', join(bin, name)])
   }
   // simulated installed package (no exports map → legacy subpath resolve)
-  const pkg = join(profile, 'node_modules', '@dsh-external', 'dsh-genui')
+  const pkg = join(profile, 'node_modules', '@omdsh-dev', 'dsh-genui')
   mkdirSync(pkg, { recursive: true })
-  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@dsh-external/dsh-genui', version: '0.0.0-test' }))
+  writeFileSync(join(pkg, 'package.json'), JSON.stringify({ name: '@omdsh-dev/dsh-genui', version: '0.0.0-test' }))
   writeFileSync(join(pkg, 'SKILL.md'), PACKAGE_SKILL)
   // profile already lists the plugin → idempotent branch → sync_skill only
   mkdirSync(profile, { recursive: true })
-  writeFileSync(join(profile, 'package.json'), '{"name":"web","dependencies":{"@dsh-external/dsh-genui":"link:whatever"}}\n')
+  writeFileSync(join(profile, 'package.json'), '{"name":"web","dependencies":{"@omdsh-dev/dsh-genui":"link:whatever"}}\n')
   const dest = join(home, 'skills', 'genui', 'SKILL.md')
   const agentsDest = join(agentsHome, 'skills', 'genui', 'SKILL.md')
   const run: Env['run'] = (profileArg = 'web') => {
@@ -117,7 +117,7 @@ describe('install.sh skill sync safety', () => {
 
   it('skips a symlink that resolves to the same package file (dev ln -s case)', () => {
     const e = env()
-    const pkgSkill = join(e.profile, 'node_modules', '@dsh-external', 'dsh-genui', 'SKILL.md')
+    const pkgSkill = join(e.profile, 'node_modules', '@omdsh-dev', 'dsh-genui', 'SKILL.md')
     mkdirSync(dirname(e.dest), { recursive: true })
     symlinkSync(pkgSkill, e.dest)
     const { status, stdout } = e.run()
@@ -160,7 +160,7 @@ describe('install.sh skill sync safety', () => {
 
   it('fails loudly when the installed package lacks SKILL.md (incomplete install)', () => {
     const e = env()
-    rmSync(join(e.profile, 'node_modules', '@dsh-external', 'dsh-genui', 'SKILL.md'))
+    rmSync(join(e.profile, 'node_modules', '@omdsh-dev', 'dsh-genui', 'SKILL.md'))
     const { status, stdout } = e.run()
     expect(status).not.toBe(0)
     expect(stdout).toContain('无法定位已安装包内的 SKILL.md')

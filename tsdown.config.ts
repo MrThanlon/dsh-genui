@@ -14,7 +14,7 @@ import { basename, dirname, resolve as resolvePath } from 'node:path'
 import type { UserConfig } from 'tsdown'
 import { transform } from 'lightningcss'
 
-const ID = '@dsh-external/dsh-genui'
+const ID = '@omdsh-dev/dsh-genui'
 
 /** Module-table entries this bundle may leave external: platform seed rows
  * (react family, cordis, ui-primitives) answered by the loader's require.
