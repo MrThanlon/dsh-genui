@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Context } from '@deepseek-ai/cordis'
 import { installDomFenceRenderer } from '../src/client/dom-fence.tsx'
 import { inject } from '../src/client/index.tsx'
-import { getPanelSpec } from '../src/client/panel-store.ts'
+import { clearSessionPanel, getPanelSpec } from '../src/client/panel-store.ts'
 
 const VALID_SPEC = '{"title":"卡片","items":[{"type":"text","content":"你好，世界"}]}'
 const BUTTON_SPEC = '{"items":[{"type":"button","label":"刷新","action":"refresh"}]}'
@@ -428,6 +428,79 @@ describe('anchor-less rows (Safari fallback render path)', () => {
     } finally {
       dispose()
       warn.mockRestore()
+    }
+  })
+})
+
+describe('persisted replay barrier across page refresh (issue #4)', () => {
+  // 回归钉 #4: 宿主 anchor key 是 `<kindlen>:<kind><id>`，assistant step 的
+  // id 是 `<turn>:<step>`（如 `14:assistant-step3:0`）。旧实现取 key 里第一个
+  // 数字 = kind 长度常量 → 所有消息的 order[0] 相同 → 刷新后 replayBarrier
+  // (= 持久化 maxSeenSeq = 该常量) 拒绝一切新 panel 围栏，dock 冻结且零日志。
+  // 修复：order[0] 改为 turn*1000+step（随消息顺序严格单调），刷新后新消息
+  // 的 turn 必然大于持久化屏障 → 正常更新。
+  const PANEL = (title: string, content: string) =>
+    `{"panel":true,"title":"${title}","items":[{"type":"text","content":"${content}"}]}`
+
+  it('lets a new-turn panel fence update the dock after a refresh', async () => {
+    const send = vi.fn()
+
+    // ── 页面 1：turn 2 与 turn 3 的两个 panel 围栏（宿主真实 key 格式）──
+    const row2 = assistantRow('14:assistant-step2:0')
+    const blockA = stockCodeBlock(PANEL('面板A', 'A'), 'dsh-ui')
+    row2.appendChild(blockA)
+    document.body.appendChild(row2)
+    const row3 = assistantRow('14:assistant-step3:0')
+    const blockB = stockCodeBlock(PANEL('面板B', 'B'), 'dsh-ui')
+    row3.appendChild(blockB)
+    document.body.appendChild(row3)
+    let dispose = installDomFenceRenderer(makeCtx('sess-refresh', send), send)
+    try {
+      await tick()
+      expect(getPanelSpec('sess-refresh')?.title).toBe('面板B')
+
+      // ── 刷新：内存态清空（localStorage 存活），新页面重装渲染器 ──
+      dispose()
+      clearSessionPanel('sess-refresh')
+      document.body.innerHTML = ''
+      dispose = installDomFenceRenderer(makeCtx('sess-refresh', send), send)
+      await tick()
+
+      // 历史重放（同一 DOM 重建）：被持久化屏障杀死，dock 保持面板B
+      document.body.appendChild(row2)
+      document.body.appendChild(row3)
+      await tick()
+      expect(getPanelSpec('sess-refresh')?.title).toBe('面板B')
+
+      // ── 新消息（turn 4）：order[0]=4000 > 屏障 3000 → dock 必须更新 ──
+      const row4 = assistantRow('14:assistant-step4:0')
+      const blockC = stockCodeBlock(PANEL('面板C', 'C'), 'dsh-ui')
+      row4.appendChild(blockC)
+      document.body.appendChild(row4)
+      await tick()
+      expect(getPanelSpec('sess-refresh')?.title).toBe('面板C')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('keeps per-step monotonicity within one turn (later step wins)', async () => {
+    // 同一 turn 内的多步：step 必须参与 seq，后一步的围栏覆盖前一步。
+    const send = vi.fn()
+    const rowA = assistantRow('14:assistant-step5:0')
+    const blockA = stockCodeBlock(PANEL('面板甲', '甲'), 'dsh-ui')
+    rowA.appendChild(blockA)
+    document.body.appendChild(rowA)
+    const rowB = assistantRow('14:assistant-step5:1')
+    const blockB = stockCodeBlock(PANEL('面板乙', '乙'), 'dsh-ui')
+    rowB.appendChild(blockB)
+    document.body.appendChild(rowB)
+    const dispose = installDomFenceRenderer(makeCtx('sess-refresh-step', send), send)
+    try {
+      await tick()
+      expect(getPanelSpec('sess-refresh-step')?.title).toBe('面板乙')
+    } finally {
+      dispose()
     }
   })
 })

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.2] - 2026-08-14
+### 修复
+- **页面刷新后面板 dock 冻结（issue #4）**：宿主 anchor key 格式为 `<kindlen>:<kind><id>`（assistant step 的 id 是 `<turn>:<step>`，如 `14:assistant-step3:0`）。DOM 通道 `anchorSeqOf` 旧实现取 key 里**第一个数字 = kind 名称长度常量**（所有 assistant step 都是同一个值）→ 面板 store 的持久化重放屏障（刷新后 replayBarrier = 持久化 maxSeenSeq = 该常量）拒绝一切新 panel 围栏：dock 停在旧快照、`[genui-action]` 还活着、控制台零日志；清 `localStorage['dsh.genui.panel']` 恢复但刷新复发（与报告完全一致）。修复：`anchorSeqOf` 改从 assistant-step key 解析 `<turn>:<step>`，seq = `turn*1000+step`（随消息顺序严格单调，刷新后新消息必然大于持久化屏障）；非 assistant 行 / 无锚点（Safari）行保留文档序兜底。同类隐患一并修复：`/panel` 本地覆盖的 localBarrier 同样依赖该 seq，此前也会冻结后续更新
+- **面板静默拒绝可观测（issue #4 建议 3）**：`applyPanelOperation` 的 barrier 拒绝路径加一次性 `console.warn`（`[genui] 面板操作被重放屏障拒绝…`，每 source 每页面会话一条；预算 overflow 后置 append 拒绝仍走既有的 budget 诊断，不重复告警）；`clearSessionPanel` 同步清理 blocked 诊断集
+### 测试
+- 263 → 266（+3：DOM 通道刷新回归「turn 2/3 面板 → 模拟刷新 → 历史重放保持旧快照 → turn 4 新围栏更新 dock」（旧代码上该测试失败于 `expected '面板B' to be '面板C'`，精确复现报告症状）/同 turn 内 step 单调性；panel-store 屏障拒绝告警一次/条）；363 全绿
+
 ## [0.8.1] - 2026-08-14
 ### 修复
 - **Safari 围栏全部静默丢失（issue #1）**：Safari 宿主渲染消息行时不带 `data-chat-anchor-key`（该属性是 React key 派生值，key 为 undefined 时 React 直接不渲染该属性；Chrome 同页 14 个代码块全有锚点、Safari 0 个）→ DOM 通道 `rowOf` 落空 → 每个 `dsh-ui` 围栏在静默 return 点被放弃，控制台零报错。修复：行解析降级链 `[data-chat-anchor-key]` → `[data-chat-flow-key]/[data-chat-flow-kind]`（宿主同一行 div 上的路由属性，kind 与 key 相互独立、可幸存）→ 代码块自身（身份降级为 `dom:unknown:<序数>`，`contextOf` 的 `?? 'unknown'` 分支本就存在）；`fenceIndexOf` 在无行兜底时改按全文档已落定 dsh-ui 块的序数计数，同行兄弟围栏不会撞同一个 `dom:unknown:N`；`anchorSeqOf` 文档序兜底改用联合选择器（锚点行 + flow 行），无锚点行仍得单调 seq 估计。**所有静默 return 点加一次性 `console.warn`（`[dsh-genui]` 前缀，WeakSet 每块一次，1s sweep 不刷屏）**：无锚点降级、落定空体、落定不可修复体各一条诊断
