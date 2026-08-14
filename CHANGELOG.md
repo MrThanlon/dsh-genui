@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.3] - 2026-08-14
+### 修复
+- **DOM 通道在异形宿主上静默不渲染（issue #6）**：DOM 通道的围栏发现此前依赖单一表面契约——选择器只认 `.md-code-block`，语言标签只认 banner 里的**叶子 `div`**。部分 DSH 0.1.0-rc.6 部署（deepsuite 风格渲染栈）把围栏渲染成 `.code-block` / `.code-block-small`，标签是 `span`，正文还可能被 content div 包裹 → 插件完全找不到围栏：保持代码块、控制台零报错（与报告完全一致）。修复为**多表面发现**：
+  - 选择器并集 `.md-code-block, .code-block, .code-block-small`（最外层去重，修饰类子元素不会双计）；
+  - **结构兜底**：任何 banner 叶子元素文本恰为 `dsh-ui`（div/span 均可、且必须在 `<pre>` 正文之外——代码体里出现 `dsh-ui` 字面量不得误判）且含 `<pre>` 的元素都会被识别为围栏表面，未知类名的宿主照样渲染；
+  - **漂移诊断**：结构兜底命中未知类名时一次性 `console.warn`（`[dsh-genui]` 前缀，每次安装一条），「静默失败」不再可能无迹可查；
+  - 已知类名表面保留完整流式能力（按内容流式接管 + 落定标签复核）；未知类名表面在标签出现（落定）后立即渲染，不丢内容。
+### 测试
+- 268 → 275（+7 多表面回归：`.code-block` 接管（span 标签 + 包裹正文）/`.code-block-small` 接管/未知类名结构兜底 + 漂移告警恰好一次/代码体含 `dsh-ui` 字面量不误判/嵌套修饰类只接管最外层/同行两个异形围栏各自渲染且身份不折叠/异形表面流式接管与落定复核）；370 全绿
+
 ## [0.8.2] - 2026-08-14
 ### 修复
 - **页面刷新后面板 dock 冻结（issue #4）**：宿主 anchor key 格式为 `<kindlen>:<kind><id>`（assistant step 的 id 是 `<turn>:<step>`，如 `14:assistant-step3:0`）。DOM 通道 `anchorSeqOf` 旧实现取 key 里**第一个数字 = kind 名称长度常量**（所有 assistant step 都是同一个值）→ 面板 store 的持久化重放屏障（刷新后 replayBarrier = 持久化 maxSeenSeq = 该常量）拒绝一切新 panel 围栏：dock 停在旧快照、`[genui-action]` 还活着、控制台零日志；清 `localStorage['dsh.genui.panel']` 恢复但刷新复发（与报告完全一致）。修复：`anchorSeqOf` 改从 assistant-step key 解析 `<turn>:<step>`，seq = `turn*1000+step`（随消息顺序严格单调，刷新后新消息必然大于持久化屏障）；非 assistant 行 / 无锚点（Safari）行保留文档序兜底。同类隐患一并修复：`/panel` 本地覆盖的 localBarrier 同样依赖该 seq，此前也会冻结后续更新
