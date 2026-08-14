@@ -150,16 +150,30 @@ function fenceIndexOf(row: Element, block: Element): number {
   return index + 1
 }
 
-/** messageSeq estimate: the numeric part of the anchor key when present,
- * else the row's document-order index among chat rows (monotonic in seq).
- * The document-order fallback counts every host flow row — anchored or not —
- * so anchor-less (Safari) rows still get a monotonic seq estimate. */
+/**
+ * messageSeq estimate from the row's anchor key.
+ *
+ * The host's context key is `<kindLen>:<kind><id>` (e.g.
+ * `14:assistant-step3:0`); the id of an assistant step is `<turn>:<step>` —
+ * the ONLY per-message monotonic counter the host exposes in the DOM. Turn
+ * and step strictly increase with message order, so a turn-based seq keeps
+ * growing across page reloads: the panel store's persisted replay barrier
+ * (hydration: replays at/below the persisted max seq are dead) depends on
+ * this monotonicity. Without it every assistant step yields the SAME
+ * constant (the kind-length prefix), so after a refresh the barrier equals
+ * that constant and silently rejects every new panel fence (issue #4).
+ *
+ * Fallback (non-assistant rows, anchor-less Safari rows): the row's
+ * document-order index among chat rows — monotonic within the current
+ * render window, degraded across reloads.
+ */
 function anchorSeqOf(row: Element): number {
   const key = row.getAttribute('data-chat-anchor-key') ?? ''
-  const match = /(\d+)/.exec(key)
-  if (match !== null) {
-    const value = Number(match[1])
-    if (Number.isFinite(value)) return value
+  const turnStep = /assistant-step(\d+):(\d+)$/.exec(key)
+  if (turnStep !== null) {
+    const turn = Number(turnStep[1])
+    const step = Number(turnStep[2])
+    if (Number.isFinite(turn) && Number.isFinite(step)) return turn * 1000 + step
   }
   const rows = document.querySelectorAll(`[data-chat-anchor-key], ${FLOW_ROW}`)
   for (let i = 0; i < rows.length; i += 1) {
