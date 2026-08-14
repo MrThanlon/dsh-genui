@@ -323,3 +323,111 @@ describe('installDomFenceRenderer', () => {
     }
   })
 })
+
+describe('anchor-less rows (Safari fallback render path)', () => {
+  // 回归钉 #1: Safari 宿主渲染消息行时省略 data-chat-anchor-key（该属性是
+  // React key 派生值，key 为 undefined 时 React 直接不渲染属性）→ rowOf 落空
+  // → DOM 通道静默放弃所有围栏。降级链必须兜住：flow 行属性 → 代码块自身。
+  it('renders a settled dsh-ui fence when the row lacks data-chat-anchor-key', async () => {
+    const row = document.createElement('div')
+    row.setAttribute('data-chat-flow-kind', 'assistant-step')
+    const block = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-safari-1', send), send)
+    try {
+      await tick()
+      expect(block.hasAttribute('data-genui-rendered')).toBe(true)
+      expect(block.style.display).toBe('none')
+      expect(row.querySelector('.genui-dom-fence')?.textContent).toContain('你好，世界')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('renders a fence with no owning row at all (block directly in the body)', async () => {
+    const block = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    document.body.appendChild(block)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-safari-2', send), send)
+    try {
+      await tick()
+      expect(block.hasAttribute('data-genui-rendered')).toBe(true)
+      expect(block.style.display).toBe('none')
+      expect(document.querySelector('.genui-dom-fence')?.textContent).toContain('你好，世界')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('assigns distinct fallback identities to sibling fences in an anchor-less row', async () => {
+    // 两个 panel:true 围栏在同一无锚点行内不得折叠成同一个 dom:unknown:N
+    // source：后一个 fence 的 replace 应赢得 fold（证明是两个不同 source），
+    // 而不是被当作第一个的幂等重放丢弃（那样快照会停在「面板A」）。
+    const row = document.createElement('div')
+    row.setAttribute('data-chat-flow-kind', 'assistant-step')
+    const first = stockCodeBlock('{"panel":true,"title":"面板A","items":[{"type":"text","content":"A"}]}', 'dsh-ui')
+    const second = stockCodeBlock('{"panel":true,"title":"面板B","items":[{"type":"text","content":"B"}]}', 'dsh-ui')
+    row.appendChild(first)
+    row.appendChild(second)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-safari-3', send), send)
+    try {
+      await tick()
+      expect(getPanelSpec('sess-safari-3')?.title).toBe('面板B')
+    } finally {
+      dispose()
+    }
+  })
+
+  it('warns once when the row anchor is missing, and stays silent for anchored rows', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const anchored = assistantRow('s15')
+    const anchoredBlock = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    anchored.appendChild(anchoredBlock)
+    document.body.appendChild(anchored)
+    const bare = document.createElement('div')
+    const bareBlock = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    bare.appendChild(bareBlock)
+    document.body.appendChild(bare)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-safari-4', send), send)
+    try {
+      await tick()
+      await tick()
+      const calls = warn.mock.calls.filter(([m]) => String(m).includes('[dsh-genui]'))
+      // 恰好一条诊断：只有无锚点块；锚点块跨多轮 sweep 也不得告警。
+      expect(calls).toHaveLength(1)
+      expect(String(calls[0]![0])).toContain('data-chat-anchor-key')
+      // 两个围栏都照常渲染（降级不丢内容）。
+      expect(anchoredBlock.hasAttribute('data-genui-rendered')).toBe(true)
+      expect(bareBlock.hasAttribute('data-genui-rendered')).toBe(true)
+    } finally {
+      dispose()
+      warn.mockRestore()
+    }
+  })
+
+  it('warns once for a settled unrepairable body', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const row = assistantRow('s16')
+    const block = stockCodeBlock(BROKEN_SPEC, 'dsh-ui')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-safari-5', send), send)
+    try {
+      await tick()
+      await tick()
+      const calls = warn.mock.calls.filter(([m]) => String(m).includes('[dsh-genui]'))
+      expect(calls).toHaveLength(1)
+      expect(String(calls[0]![0])).toContain('does not parse')
+      expect(block.hasAttribute('data-genui-rendered')).toBe(false)
+    } finally {
+      dispose()
+      warn.mockRestore()
+    }
+  })
+})
