@@ -102,15 +102,44 @@ function isSettled(block: Element): boolean {
   return block.closest(STREAMING) === null
 }
 
-/** The owning conversation row (stable per-message identity). */
-function rowOf(block: Element): Element | null {
-  return block.closest('[data-chat-anchor-key]')
+/**
+ * The owning conversation row (stable per-message identity).
+ *
+ * The host renders `data-chat-anchor-key` from a React key that is OMITTED
+ * when the routed node's key is undefined — observed on Safari (and any
+ * fallback render path), where every fence row lacks the attribute while
+ * Chrome's identical page has it. Fences must not silently die there, so the
+ * lookup walks down a fallback chain and never gives up:
+ *
+ * 1. `[data-chat-anchor-key]` — the canonical stable row anchor;
+ * 2. `[data-chat-flow-key]` / `[data-chat-flow-kind]` — the same row div
+ *    rendered by the host (both carry the routing key/kind, and the kind is
+ *    a separate value that survives an undefined React key);
+ * 3. the code block itself — last resort; identity degrades to
+ *    `dom:unknown:<ordinal>` (see `fenceIndexOf`/`contextOf`).
+ */
+const FLOW_ROW = '[data-chat-flow-key], [data-chat-flow-kind]'
+function rowOf(block: Element): Element {
+  return block.closest('[data-chat-anchor-key]') ?? block.closest(FLOW_ROW) ?? block
 }
 
 /** 1-based ordinal of this block among the row's settled dsh-ui blocks
  * (document order). Streaming candidates are skipped, so the ordinal stays
- * stable while the block itself is still streaming. */
+ * stable while the block itself is still streaming. When the fallback chain
+ * bottoms out at the block itself (no owning row in the DOM at all), the
+ * ordinal falls back to document order among ALL settled dsh-ui blocks so
+ * sibling fences never collide on the same `dom:unknown:N` identity. */
 function fenceIndexOf(row: Element, block: Element): number {
+  if (row === block) {
+    let index = 0
+    for (const candidate of document.querySelectorAll(CODE_BLOCK)) {
+      if (candidate.closest(STREAMING) !== null) continue
+      if (infostringOf(candidate) === null) continue
+      index += 1
+      if (candidate === block) return index
+    }
+    return index + 1
+  }
   let index = 0
   for (const candidate of row.querySelectorAll(CODE_BLOCK)) {
     if (candidate.closest(STREAMING) !== null) continue
@@ -122,7 +151,9 @@ function fenceIndexOf(row: Element, block: Element): number {
 }
 
 /** messageSeq estimate: the numeric part of the anchor key when present,
- * else the row's document-order index among chat rows (monotonic in seq). */
+ * else the row's document-order index among chat rows (monotonic in seq).
+ * The document-order fallback counts every host flow row — anchored or not —
+ * so anchor-less (Safari) rows still get a monotonic seq estimate. */
 function anchorSeqOf(row: Element): number {
   const key = row.getAttribute('data-chat-anchor-key') ?? ''
   const match = /(\d+)/.exec(key)
@@ -130,7 +161,7 @@ function anchorSeqOf(row: Element): number {
     const value = Number(match[1])
     if (Number.isFinite(value)) return value
   }
-  const rows = document.querySelectorAll('[data-chat-anchor-key]')
+  const rows = document.querySelectorAll(`[data-chat-anchor-key], ${FLOW_ROW}`)
   for (let i = 0; i < rows.length; i += 1) {
     if (rows[i] === row) return i
   }
@@ -164,6 +195,13 @@ export function installDomFenceRenderer(
    * only once settled — streaming renders are identity-less (no panel
    * publish, no durable state), mirroring the registry channel. */
   function contextOf(row: Element, block: Element, settled: boolean): { key: Key; context: GenuiFenceContext } {
+    if (settled && row.getAttribute('data-chat-anchor-key') === null) {
+      // Safari / fallback render path: the host omitted the row anchor (the
+      // attribute is a React key that React drops when undefined). Fences
+      // still render with the degraded `dom:unknown:N` identity — warn once
+      // per block so the degraded path is visible in the console.
+      warnOnce(block, 'no [data-chat-anchor-key] ancestor for a dsh-ui fence (host render path without row anchor — e.g. Safari); using fallback identity dom:unknown:N')
+    }
     const fenceIndex = fenceIndexOf(row, block)
     const anchorKey = row.getAttribute('data-chat-anchor-key') ?? 'unknown'
     const key = `dom:${anchorKey}:${fenceIndex}` as Key
@@ -185,10 +223,18 @@ export function installDomFenceRenderer(
     block.removeAttribute(PROCESSED)
   }
 
+  /** One-time-per-block diagnostics: silent returns must be diagnosable
+   * (the 1s sweep would otherwise spam the console every pass). */
+  const warned = new WeakSet<Element>()
+  function warnOnce(block: Element, message: string): void {
+    if (warned.has(block)) return
+    warned.add(block)
+    console.warn(`[dsh-genui] ${message}`)
+  }
+
   function renderBlock(block: HTMLElement): void {
     if (block.hasAttribute(PROCESSED)) return
     const row = rowOf(block)
-    if (row === null) return
     const settled = isSettled(block)
     // Settled blocks must carry the dsh-ui label. Streaming blocks cannot:
     // the host renders the language label only once the reply settles
@@ -198,12 +244,20 @@ export function installDomFenceRenderer(
     // happens to parse) is reverted at the settle transition below.
     if (settled && infostringOf(block) === null) return
     const raw = rawOf(block)
-    if (raw.trim() === '') return
+    if (raw.trim() === '') {
+      if (settled) warnOnce(block, 'settled dsh-ui fence has an empty body; keeping the code block')
+      return
+    }
     const { key, context } = contextOf(row, block, settled)
     const node: ReactNode | null = renderResolvedFenceNode(raw, key, context)
     // Null = no finished component yet (streaming half) or unrepairable:
-    // the stock code block stays visible until something renders.
-    if (node === null) return
+    // the stock code block stays visible until something renders. A settled
+    // unrepairable body warns once (the DOM channel has no visible
+    // diagnostic of its own — the stock block keeps the raw content).
+    if (node === null) {
+      if (settled) warnOnce(block, 'settled dsh-ui fence body does not parse; keeping the code block')
+      return
+    }
     const container = document.createElement('div')
     container.className = CONTAINER_CLASS
     block.style.display = 'none'
@@ -261,8 +315,7 @@ export function installDomFenceRenderer(
         }
       }
       if (mount.lastRaw !== raw || mount.lastSettled !== settled) {
-        const row = rowOf(block)
-        const anchor = row ?? block.parentElement ?? block
+        const anchor = rowOf(block)
         const { key, context } = contextOf(anchor, block, settled)
         const node = renderResolvedFenceNode(raw, key, context)
         if (node === null) {

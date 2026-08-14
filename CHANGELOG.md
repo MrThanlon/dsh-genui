@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.8.1] - 2026-08-14
+### 修复
+- **Safari 围栏全部静默丢失（issue #1）**：Safari 宿主渲染消息行时不带 `data-chat-anchor-key`（该属性是 React key 派生值，key 为 undefined 时 React 直接不渲染该属性；Chrome 同页 14 个代码块全有锚点、Safari 0 个）→ DOM 通道 `rowOf` 落空 → 每个 `dsh-ui` 围栏在静默 return 点被放弃，控制台零报错。修复：行解析降级链 `[data-chat-anchor-key]` → `[data-chat-flow-key]/[data-chat-flow-kind]`（宿主同一行 div 上的路由属性，kind 与 key 相互独立、可幸存）→ 代码块自身（身份降级为 `dom:unknown:<序数>`，`contextOf` 的 `?? 'unknown'` 分支本就存在）；`fenceIndexOf` 在无行兜底时改按全文档已落定 dsh-ui 块的序数计数，同行兄弟围栏不会撞同一个 `dom:unknown:N`；`anchorSeqOf` 文档序兜底改用联合选择器（锚点行 + flow 行），无锚点行仍得单调 seq 估计。**所有静默 return 点加一次性 `console.warn`（`[dsh-genui]` 前缀，WeakSet 每块一次，1s sweep 不刷屏）**：无锚点降级、落定空体、落定不可修复体各一条诊断
+### 测试
+- 258 → 263（+5 DOM 通道 Safari 回归：无锚点行渲染/无行直接挂 body/同无锚点行兄弟围栏身份不折叠（面板 fold 以第二个 replace 为准）/无锚点一次告警且锚点行跨 sweep 静默/落定坏体一次告警）；360 全绿
+
 ## [0.8.0] - 2026-08-13
 ### 发布
 - **OSS 开源首发**：DSH 正式开源后 `dsh-genui` 随生态开放——仓库迁移至 `omdsh-dev` 组织并公开（topics 保持 `dsh`、`dsh-plugin`）；包名定为 **`@omdsh-dev/dsh-genui`**（与 GitHub 组织 `omdsh-dev` 对齐；`@deepseek-ai` 为官方 scope，第三方插件不再占用），移除 `private: true`，准备公开发布
