@@ -102,4 +102,36 @@ describe('DiagramNode', () => {
       cleanup()
     }
   })
+
+  it('renders zone regions and the legend strip', () => {
+    const spec: GenuiDiagram = {
+      type: 'diagram',
+      kind: 'architecture',
+      title: '带分组的架构',
+      zones: [
+        { label: 'FRONTEND', x: 40, y: 40, w: 200, h: 140 },
+        { label: 'DATA', x: 280, y: 40, w: 200, h: 140 },
+      ],
+      nodes: [
+        { id: 'a', label: 'Web', x: 60, y: 80 },
+        { id: 'b', label: 'DB', x: 300, y: 80 },
+      ],
+      edges: [{ from: 'a', to: 'b' }],
+    }
+    const { container } = render(<DiagramNode node={spec} />)
+    const texts = Array.from(container.querySelectorAll('text')).map(t => t.textContent)
+    expect(texts).toContain('FRONTEND')
+    expect(texts).toContain('DATA')
+    expect(texts).toContain('LEGEND')
+    expect(texts).toContain('Focal')
+    // Zone hairline rects exist (dashed border + label mask + node boxes).
+    expect(container.querySelectorAll('rect').length).toBeGreaterThanOrEqual(8)
+  })
+
+  it('renders the dotted-paper ground pattern', () => {
+    const { container } = render(<DiagramNode node={base} />)
+    const pattern = container.querySelector('pattern')
+    expect(pattern).not.toBeNull()
+    expect(pattern?.getAttribute('patternUnits')).toBe('userSpaceOnUse')
+  })
 })

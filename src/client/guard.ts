@@ -746,6 +746,27 @@ function repairDiagramTheme(v: unknown): GenuiDiagramTheme | undefined {
   return Object.keys(out).length === 0 ? undefined : out
 }
 
+function repairDiagramZones(v: unknown): GenuiDiagram['zones'] | undefined {
+  if (v === undefined) return []
+  if (!Array.isArray(v)) return undefined
+  const out: GenuiDiagram['zones'] = []
+  for (const raw of v) {
+    if (out.length >= GENUI_LIMITS.maxDiagramZones) break
+    const o = obj(raw)
+    if (o === undefined) continue
+    const label = str(o.label, 64)
+    if (label === undefined) continue
+    out.push({
+      label,
+      ...opt('x', o.x === undefined ? undefined : grid4(num(o.x, -1e6, 1e6) ?? 0, 0, 1e6)),
+      ...opt('y', o.y === undefined ? undefined : grid4(num(o.y, -1e6, 1e6) ?? 0, 0, 1e6)),
+      ...opt('w', o.w === undefined ? undefined : grid4(num(o.w, -1e6, 1e6) ?? 100, 40, 2000)),
+      ...opt('h', o.h === undefined ? undefined : grid4(num(o.h, -1e6, 1e6) ?? 100, 40, 1200)),
+    })
+  }
+  return out
+}
+
 function repairDiagram(v: unknown): GenuiDiagram | null {
   const o = obj(v)
   if (o === undefined) return null
@@ -755,8 +776,10 @@ function repairDiagram(v: unknown): GenuiDiagram | null {
   if (nodes === undefined) return null
   const edges = repairDiagramEdges(o.edges)
   if (edges === undefined) return null
+  const zones = repairDiagramZones(o.zones)
+  if (zones === undefined) return null
   return {
-    type: 'diagram', kind, nodes, edges,
+    type: 'diagram', kind, nodes, edges, zones,
     ...opt('variant', enu(o.variant, DIAGRAM_VARIANTS)),
     ...opt('title', str(o.title, 256)),
     ...opt('theme', repairDiagramTheme(o.theme)),

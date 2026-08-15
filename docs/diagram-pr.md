@@ -22,17 +22,17 @@
 
 | 文件 | 改动 |
 |---|---|
-| `src/client/spec.ts` | 新增 `GenuiDiagram` / `GenuiDiagramNode` / `GenuiDiagramEdge` / `GenuiDiagramTheme` 类型与 `DIAGRAM_KINDS`(27 种)常量;并入 `GenuiNode` 联合 |
-| `src/client/guard.ts` | 新增复杂度上限(`maxDiagramNodes=9` 等);`repairGenuiSpec` 的 `diagram` 分支(4px 网格取整、kind 白名单、节点/边清洗、主题色安全过滤);`validateGenuiSpec` 校验 |
+| `src/client/spec.ts` | 新增 `GenuiDiagram` / `GenuiDiagramNode` / `GenuiDiagramEdge` / `GenuiDiagramZone` / `GenuiDiagramTheme` 类型与 `DIAGRAM_KINDS`(27 种)常量;并入 `GenuiNode` 联合 |
+| `src/client/guard.ts` | 新增复杂度上限(`maxDiagramNodes=9` 等);`repairGenuiSpec` 的 `diagram` 分支(4px 网格取整、kind 白名单、节点/边/zone 清洗、主题色安全过滤);`validateGenuiSpec` 校验 |
 | `src/client/blocks/diagram/theme.ts` | 语义 token 系统:light/dark 双皮肤 + `theme` 覆盖;节点类型→填充/描边;边语义→颜色 |
 | `src/client/blocks/diagram/geometry.ts` | 正交连接器系统:端口选择、elbow path(r=8)、fan 规则、边标签遮罩、桥接跳线 |
-| `src/client/blocks/diagram/layout.ts` | 布局引擎:坐标类 kind 透传定位;规则类 kind 自动排版(column/row/layer/tree/grid) |
-| `src/client/blocks/diagram/index.tsx` | `DiagramNode` React 组件:SVG 渲染、a11y 外壳(`role="img"`+`aria-labelledby`+`aria-describedby`)、焦点预算、z-order |
+| `src/client/blocks/diagram/layout.ts` | 布局引擎:坐标类 kind 透传定位;规则类 kind 自动排版(column/row/layer/tree/grid);64px 编辑级节点高度 |
+| `src/client/blocks/diagram/index.tsx` | `DiagramNode` React 组件:dotted-paper 底纹、zone 分组、64px 节点(序号角标/tag/名称/sublabel)、legend 底条、a11y 外壳、焦点预算、z-order、accent 箭头加粗 |
 | `src/client/blocks/render-node.tsx` | `case 'diagram'` 接入渲染分发 |
 | `src/plugin/index.ts` | `GENUI_SECTION_TEXT` 增加 `diagram` 教学行;组件选择规则更新 |
 | `SKILL.md` | 增加 `diagram` 组件规范、kind 表、与 mermaid 的分工 |
 | `tests/genui-diagram-guard.spec.ts` | guard 纯测试:4px 取整、kind/节点清洗、预算、重复 id、标签长度、主题色安全 |
-| `tests/genui-diagram.spec.tsx` | jsdom 渲染测试:a11y、标签、正交路径、语义色、dark 变体、27 种 kind 全渲染 |
+| `tests/genui-diagram.spec.tsx` | jsdom 渲染测试:a11y、标签、正交路径、语义色、dark 变体、27 种 kind 全渲染、zone/legend、dotted-paper |
 | `docs/diagram-component-design.md` | 设计文档(本移植的模式与标准) |
 
 ## 3. 设计决策

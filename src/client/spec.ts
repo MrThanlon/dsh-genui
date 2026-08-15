@@ -616,6 +616,17 @@ export interface GenuiDiagramTheme {
   link?: string
 }
 
+/** Zone container: a labelled region grouping related nodes (max 3). */
+export interface GenuiDiagramZone {
+  /** Zone label (mono uppercase eyebrow in the renderer). */
+  label: string
+  /** Bounding box in the same canvas space as the nodes. */
+  x?: number
+  y?: number
+  w?: number
+  h?: number
+}
+
 /**
  * Editorial diagram (diagram-design port): a white-listed declarative diagram
  * rendered as inline SVG by the browser. `kind` selects the layout grammar
@@ -637,6 +648,8 @@ export interface GenuiDiagram {
   nodes: GenuiDiagramNode[]
   /** Connectors. */
   edges?: GenuiDiagramEdge[]
+  /** Optional labelled regions grouping nodes (max 3). */
+  zones?: GenuiDiagramZone[]
   /** Optional semantic-token overrides. */
   theme?: GenuiDiagramTheme
 }

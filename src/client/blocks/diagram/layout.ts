@@ -45,7 +45,7 @@ const COORDINATE_KINDS: readonly GenuiDiagramKind[] = [
 
 const GAP = 32 // editorial gap between nodes
 const NODE_W = 128
-const NODE_H = 48
+const NODE_H = 64
 const MARGIN = 40
 
 function isCoord(kind: GenuiDiagramKind): boolean {
