@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.8.5] - 2026-08-16
+### 发布
+- **发布规范对齐 `plugin_check`（issue #15）**：
+  - 新增 bundle 源码入口 `src/index.ts`（`import type {}` 先引入 dsh client runtime 的 cordis Context 增广再重导出 `src/plugin/index`，规避 TS 5.9 从根入口进入时全局增广顺序不稳定的类型错误）；tsdown node 入口改为命名入口 `{ index: 'src/index.ts', invariant: 'src/plugin/invariant.ts' }` 并固定 `entryFileNames`，保持发布布局 `lib/index.js` + `lib/invariant.js` 不变；
+  - `tsconfig`：`outDir` 改为 `lib`（与 `main` 的 `lib/` 前缀对齐）、新增 `declarationDir: "lib/types"`（类型输出布局不变）、显式 `types: ["node"]`（devDependencies 同步补 `@types/node`，消除隐式 Node 类型依赖）；
+  - `files` 增补 `lib`、`src` 目录声明；新增 `scripts.prepack = pnpm run build`，发布 tarball 前强制重建 lib，clean checkout 可复现发布产物。
+  - 已知非本仓库可修项：`plugin_check` 的 org-name 政策目前只放行 `@deepseek-ai/*`/`@dsh-external/*`/`dsh-*`，`@omdsh-dev/dsh-genui` 为社区组织公开发布名，保持不变；其 `missing-peer: cordis` 提示基于旧 cordis 键名，本包实际依赖 `@deepseek-ai/cordis@^4.0.1`，不添加幻影 peer。
+### 测试
+- 全量 373 项（271 passed / 102 skipped）0 失败；`plugin_check` 从 3 errors / 4 warnings 收敛为 1 error / 1 warning（仅剩上述命名政策与旧 peer 键提示）。
+
 ## [0.8.4] - 2026-08-16
 ### 修复
 - **genui 与普通代码块共存时整条消息被吞（issue #13）**：同一消息容器里 `dsh-ui` 围栏和 python/ts/bash 等普通代码块共存时，DOM 通道的结构兜底从普通代码块的 `<pre>` 向上回溯，越过它自己的 `.md-code-block` 把共享的 `.markdown` 根容器误判为「dsh-ui 围栏」→ 整条消息 `display:none`、只剩 GenUI，普通代码块丢失。修复两层：① 兜底循环跳过已由已知表面选择器命中的 `<pre>`（这些块已处理，不再向上回溯）；② 标签判定不认领「属于嵌套已知代码块」的 banner（`owner !== block` 即跳过），共享容器不能再通过嵌套围栏的标签自证。未知类名表面的结构兜底能力保持不变（回归测试覆盖：未知表面 + 已知 python 块并存时仍照常渲染）
