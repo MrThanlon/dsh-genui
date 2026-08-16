@@ -1,12 +1,16 @@
 # Changelog
 
-## [Unreleased]
+## [0.8.6] - 2026-08-16
 ### 修复
 - **原版 DSH（0.1.0-rc.6）壳上 dsh-ui 围栏全部静默不渲染**：client 入口硬注入声明 `inject: ['slots','sessions','inputTriggers']` 把 `inputTriggers` 当成了激活前置——但 cordis 的 `inject` 是**硬激活门控**：声明的服务永不出现（原版 DSH 壳没有任何插件提供 `inputTriggers` 服务，仅有 vision-toolkit 以 `ctx.inject()` 可选订阅）→ fiber 永久停在 waiting、`apply()` 永不执行 → 渲染器整体未启动：围栏保持代码块、控制台零报错。修复：从硬注入列表移除 `inputTriggers`，`/panel` 改为 `ctx.inject(['inputTriggers'], …)` **可选订阅**（服务与 slots/sessions 由不同 bundle 并发提供，任意到场顺序都能正确注册；缺失时仅不注册 `/panel`，渲染不受影响）；带该服务的宿主行为不变，原版壳上 GenUI 恢复渲染
 - **单组件根围栏被静默拒绝（JSON 有效却永远保持代码块）**：`parsePartialGenuiSpec` / `repairGenuiSpec` / `validateGenuiSpec` 三处入口都强制根节点必须带 `items` 数组——而注入的围栏词汇表把单组件（`{"type":"callout",…}` 直接作根）列为合法写法 → 这类围栏 JSON 完全有效、渲染器却拒绝：DOM 通道报一次「does not parse」后保持代码块（控制台有告警，页面无效果）。修复：新增 `wrapSingleComponentRoot`（spec.ts），单组件根自动包裹为 `col`（`panel`/`append` 提升到包裹层，面板路由不受影响），解析/修复/校验三条路径统一归一化，渲染器与 `validate_dsh_ui` 工具行为一致
+- **DOM 通道偶发整条最终回答消失（issue #19）**：DOM 通道此前「先 `display:none` 原始块、再挂载替代组件」——挂载一旦失败原始围栏已被隐藏且无替代物（围栏恰为整条回答内容时即整条空白）；且结构兜底只认「标签 `dsh-ui` + 含 `<pre>`」，消息级容器若满足这两点会被整体隐藏（issue #13 的残余变体）。修复：① 先挂载成功再隐藏，任何挂载/重渲染失败清理现场并保留原始代码块（一次性 `[dsh-genui]` 告警）；② 候选表面必须满足「banner + 单一 `<pre>` 代码体」结构，含段落/列表/多个代码体的消息容器直接跳过并告警；③ 宿主抹掉替代容器内容时原地重建 root，宿主换块留下孤儿容器时立即移除并接管新块
+### 新增
+- **会话面板 ✕ 关闭按钮（issue #23）**：面板头部右端新增 ✕，复用 `/panel clear` 同一本地覆盖 `setLocalPanel(sessionId, null)`——原地卸载、写入 localStorage（刷新保持关闭）、订阅者同步，无导航无刷新；`/panel` 或新 `panel:true` 围栏照常重开
 ### 测试
 - 回归钉更新（数量不变）：`dom-fence.spec.tsx` 的注入列表断言改为 `['sessions','slots']`——原断言含 `inputTriggers`，与硬激活门控语义冲突（见上条修复说明），注释附原因；jsdom 端到端补充验证：DOM 通道在无 `inputTriggers` 的宿主上发现围栏并渲染 callout/chart
 - 370 → 380（+10：genui-guard +7（单组件根包裹/panel-append 提升/非组件拒绝/幂等/校验通过/parseGenuiSpec 包裹/垃圾拒绝）、genui-partial +3（单组件根包裹/panel-append 提升/非组件拒绝））；本地环境其余失败均为宿主源码树依赖（install-script chmod / skill-md yaml 版本），与本次变更无关
+- 380 → 389（+6：dom-fence +5（issue #19：消息容器不接管/内容被抹自愈/孤儿容器移除/挂载失败保留原始块/防御告警恰一次）、genui-panel +1（issue #23：✕ 关闭 → 快照清空 + localStorage 持久化 → 重开））；全量 287 passed / 102 skipped 0 失败，CI Node 22 + 24 双绿，plugin_check 维持 1 error / 1 warning 基线（均为已知非本仓库可修项）
 
 ## [0.8.5] - 2026-08-16
 ### 发布
