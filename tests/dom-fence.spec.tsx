@@ -4,8 +4,9 @@
 // `<pre>`) inside a conversation row and drives the observer pipeline.
 import { cleanup, fireEvent } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { createRoot } from 'react-dom/client'
 import type { Context } from '@deepseek-ai/cordis'
-import { installDomFenceRenderer } from '../src/client/dom-fence.tsx'
+import { installDomFenceRenderer, setDomRootFactory } from '../src/client/dom-fence.tsx'
 import { inject } from '../src/client/index.tsx'
 import { clearSessionPanel, getPanelSpec } from '../src/client/panel-store.ts'
 
@@ -788,6 +789,155 @@ describe('shared markdown root with mixed code blocks (issue #13)', () => {
       expect(root.querySelectorAll('.genui-dom-fence')).toHaveLength(1)
     } finally {
       dispose()
+    }
+  })
+})
+
+describe('final-answer blank-out hardening (issue #19)', () => {
+  // 回归钉 #19: 含 dsh-ui 围栏的最终回答偶发整条不显示（Timeline 正常、刷新
+  // 恢复）。DOM 通道的两处失败模式都会造成「原始块被隐藏 + 替代组件缺失」：
+  // ① 先 display:none 后挂载，挂载失败时原始围栏已被隐藏；
+  // ② 结构兜底把「标签 dsh-ui + 含 <pre>」的消息级容器当成围栏表面，整条
+  // 消息（含正文段落）被 display:none。修复：先挂载成功再隐藏、失败保留原
+  // 始代码块；候选表面必须是「banner + 单一代码体」，消息容器直接跳过并告警。
+
+  it('refuses to take over a message-level container that labels dsh-ui (prose stays visible)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const row = assistantRow('s40')
+    // A host render shape where the banner label, prose and the fence body
+    // share one message-level container: hiding it would blank the answer.
+    const root = document.createElement('div')
+    root.className = 'host-message-body'
+    const label = document.createElement('div')
+    label.textContent = 'dsh-ui'
+    const prose = document.createElement('p')
+    prose.textContent = '这段正文必须在任何情况下可见'
+    const pre = document.createElement('pre')
+    const code = document.createElement('code')
+    code.textContent = VALID_SPEC
+    pre.appendChild(code)
+    root.append(label, prose, pre)
+    row.appendChild(root)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-19-1', send), send)
+    try {
+      await tick()
+      await tick()
+      // The message container is never hidden or taken over; the prose and
+      // the raw fence stay visible instead of the whole answer going blank.
+      expect(root.style.display).toBe('')
+      expect(root.hasAttribute('data-genui-rendered')).toBe(false)
+      expect(prose.isConnected).toBe(true)
+      expect(pre.isConnected).toBe(true)
+      expect(row.querySelector('.genui-dom-fence')).toBeNull()
+      // 恰好一条 issue #19 防御诊断，跨 sweep 不刷屏。
+      const calls = warn.mock.calls.filter(([m]) => String(m).includes('疑似消息容器'))
+      expect(calls).toHaveLength(1)
+    } finally {
+      dispose()
+      warn.mockRestore()
+    }
+  })
+
+  it('refuses a surface-class element that is actually a message container', async () => {
+    const row = assistantRow('s41')
+    const root = document.createElement('div')
+    root.className = 'md-code-block'
+    const label = document.createElement('div')
+    label.textContent = 'dsh-ui'
+    const prose = document.createElement('p')
+    prose.textContent = '正文'
+    const pre = document.createElement('pre')
+    pre.textContent = VALID_SPEC
+    root.append(label, prose, pre)
+    row.appendChild(root)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-19-2', send), send)
+    try {
+      await tick()
+      expect(root.hasAttribute('data-genui-rendered')).toBe(false)
+      expect(root.style.display).toBe('')
+      expect(row.querySelector('.genui-dom-fence')).toBeNull()
+    } finally {
+      dispose()
+    }
+  })
+
+  it('re-renders an inline mount whose container content was wiped by a host re-render', async () => {
+    const err = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const row = assistantRow('s42')
+    const block = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-19-3', send), send)
+    try {
+      await tick()
+      const container = row.querySelector<HTMLElement>('.genui-dom-fence')
+      expect(container).not.toBeNull()
+      expect(container!.textContent).toContain('你好，世界')
+      // Host re-render wipes the foreign container's children but keeps the
+      // node: the stock block must not stay hidden behind an empty box.
+      container!.replaceChildren()
+      await tick()
+      expect(block.style.display).toBe('none')
+      // The mount is rebuilt with a fresh container + root in place.
+      const rebuilt = row.querySelector<HTMLElement>('.genui-dom-fence')
+      expect(rebuilt).not.toBeNull()
+      expect(rebuilt!.textContent).toContain('你好，世界')
+      expect(rebuilt!.previousElementSibling).toBe(block)
+    } finally {
+      dispose()
+      err.mockRestore()
+    }
+  })
+
+  it('removes the orphaned replacement container when the host replaces the stock block', async () => {
+    const row = assistantRow('s43')
+    const block = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-19-4', send), send)
+    try {
+      await tick()
+      expect(row.querySelector('.genui-dom-fence')).not.toBeNull()
+      // The host swaps the message node out from under us but our foreign
+      // container survives as an orphan: it must be removed immediately.
+      block.remove()
+      await tick()
+      expect(row.querySelector('.genui-dom-fence')).toBeNull()
+    } finally {
+      dispose()
+    }
+  })
+
+  it('keeps the stock block visible when the React root fails to mount (issue #19)', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    setDomRootFactory(() => {
+      throw new Error('synthetic root failure')
+    })
+    const row = assistantRow('s44')
+    const block = stockCodeBlock(VALID_SPEC, 'dsh-ui')
+    row.appendChild(block)
+    document.body.appendChild(row)
+    const send = vi.fn()
+    const dispose = installDomFenceRenderer(makeCtx('sess-19-5', send), send)
+    try {
+      await tick()
+      // Mount-then-hide: the takeover failed BEFORE the block was hidden, so
+      // the final answer keeps its raw code block instead of going blank.
+      expect(block.style.display).toBe('')
+      expect(block.hasAttribute('data-genui-rendered')).toBe(false)
+      expect(row.querySelector('.genui-dom-fence')).toBeNull()
+      const calls = warn.mock.calls.filter(([m]) => String(m).includes('keeping the stock code block'))
+      expect(calls).toHaveLength(1)
+    } finally {
+      dispose()
+      setDomRootFactory(createRoot)
+      warn.mockRestore()
     }
   })
 })

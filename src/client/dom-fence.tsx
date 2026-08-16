@@ -44,7 +44,7 @@
  * plugin's browser bundle mounts React roots, the model can only author
  * fence text, and unrepairable bodies stay stock code blocks.
  */
-import type { Key, ReactNode } from 'react'
+import { Fragment, isValidElement, type Key, type ReactNode } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { Context } from '@deepseek-ai/cordis'
 import type { SessionId } from '@deepseek-ai/dsh-client-runtime/client'
@@ -73,12 +73,41 @@ const SWEEP_MS = 1000
  * it in a content div. */
 const SURFACE_HOPS = 4
 
+/** Block-level content that never belongs to a code-block surface: a real
+ * fence surface is "banner chrome + ONE code body". An element that also
+ * contains paragraphs/lists/headings/tables (or several `<pre>` bodies) is a
+ * message-level container, not a fence — taking it over would hide the whole
+ * final answer (issue #19's residual variant of the issue #13 class). */
+const BLOCK_CONTENT_SELECTOR = 'p, ul, ol, dl, table, h1, h2, h3, h4, h5, h6, blockquote, hr, img, figure'
+
+/** Does this element look like a single code-block surface rather than a
+ * message container? The only allowed non-code content is banner chrome. */
+function isPlausibleFenceSurface(candidate: Element): boolean {
+  const pres = candidate.querySelectorAll('pre')
+  if (pres.length > 1) return false
+  const pre = pres[0] ?? null
+  for (const el of candidate.querySelectorAll(BLOCK_CONTENT_SELECTOR)) {
+    if (pre !== null && pre.contains(el)) continue
+    return false
+  }
+  return true
+}
+
+/** `renderResolvedFenceNode` returns a bare Fragment for `panel:true` fences
+ * (the publisher renders nothing); every inline fence mounts a real tree.
+ * The DOM channel uses this to tell an empty container that was WIPED by a
+ * host re-render apart from an intentionally empty panel root. */
+function isPanelRoot(node: ReactNode): boolean {
+  return isValidElement(node) && node.type === Fragment
+}
+
 interface Mount {
   root: Root
   container: HTMLElement
   block: HTMLElement
   lastRaw: string
   lastSettled: boolean
+  lastNode: ReactNode
 }
 
 function isTextNode(node: Node): node is Text {
@@ -144,11 +173,25 @@ function isSettled(block: Element): boolean {
 
 /** Walk up from a `<pre>` to its fence surface root — the ancestor that
  * carries the banner label AND the pre. Returns null when no ancestor within
- * `SURFACE_HOPS` (or the scope boundary) labels itself `dsh-ui`. */
+ * `SURFACE_HOPS` (or the scope boundary) labels itself `dsh-ui`, or when the
+ * labeled ancestor is a message-level container rather than a code surface
+ * (see {@link isPlausibleFenceSurface}). */
 function surfaceOf(pre: HTMLElement, scope: ParentNode = document): HTMLElement | null {
   let el: HTMLElement | null = pre.parentElement
   for (let hops = 0; el !== null && el !== scope && hops < SURFACE_HOPS; hops += 1, el = el.parentElement) {
-    if (infostringOf(el) === 'dsh-ui') return el
+    if (infostringOf(el) !== 'dsh-ui') continue
+    if (!isPlausibleFenceSurface(el)) return null
+    return el
+  }
+  return null
+}
+
+/** The labeled-but-implausible ancestor `surfaceOf` just rejected, if any:
+ * diagnostics for the issue #19 guard so a skipped fence is never silent. */
+function implausibleLabeledAncestorOf(pre: HTMLElement, scope: ParentNode = document): HTMLElement | null {
+  let el: HTMLElement | null = pre.parentElement
+  for (let hops = 0; el !== null && el !== scope && hops < SURFACE_HOPS; hops += 1, el = el.parentElement) {
+    if (infostringOf(el) === 'dsh-ui' && !isPlausibleFenceSurface(el)) return el
   }
   return null
 }
@@ -170,6 +213,9 @@ function findFenceCandidates(scope: ParentNode = document): HTMLElement[] {
     // candidate, so a fence is never double-counted or taken over twice.
     if (el.parentElement !== null && el.parentElement.closest(CODE_BLOCK_SELECTORS) !== null) continue
     if (seen.has(el)) continue
+    // Message-level containers that happen to carry a surface class must
+    // not be taken over: hiding them hides the whole answer (issue #19).
+    if (!isPlausibleFenceSurface(el)) continue
     out.push(el)
     seen.add(el)
   }
@@ -182,7 +228,16 @@ function findFenceCandidates(scope: ParentNode = document): HTMLElement[] {
     // every other code block with it (issue #13).
     if (pre.closest(CODE_BLOCK_SELECTORS) !== null) continue
     const surface = surfaceOf(pre, scope)
-    if (surface === null || seen.has(surface)) continue
+    if (surface === null) {
+      // Diagnose the issue #19 guard: a labeled ancestor that is NOT a code
+      // surface (prose/multiple code bodies) was skipped on purpose.
+      if (implausibleLabeledAncestorOf(pre, scope) !== null && !plausibilityWarned) {
+        plausibilityWarned = true
+        console.warn('[dsh-genui] 跳过带 dsh-ui 标签但疑似消息容器的节点（含段落或多个代码体）——防止 DOM 通道隐藏整条消息（issue #19）')
+      }
+      continue
+    }
+    if (seen.has(surface)) continue
     // Host DOM drift diagnostic: the fence renders (structural backstop),
     // but the surface class is unknown to this build — warn once per
     // renderer install so future drift is never silent again.
@@ -199,6 +254,18 @@ function findFenceCandidates(scope: ParentNode = document): HTMLElement[] {
 /** One-time-per-install drift diagnostic flag (reset per install, so tests
  * and hot re-installs each get a fresh warning budget). */
 let driftWarned = false
+/** One-time-per-install issue #19 guard diagnostic (same budget). */
+let plausibilityWarned = false
+
+/** Root factory seam (tests / tuning): the DOM channel creates one React root
+ * per taken-over fence through this indirection so mount-failure cleanup is
+ * reachable in jsdom without mocking the react-dom module. */
+let domRootFactory: (container: HTMLElement) => Root = createRoot
+
+/** Override the React root factory (tests / tuning). */
+export function setDomRootFactory(factory: (container: HTMLElement) => Root): void {
+  domRootFactory = factory
+}
 
 /**
  * The owning conversation row (stable per-message identity).
@@ -285,6 +352,7 @@ export function installDomFenceRenderer(
 ): () => void {
   if (typeof document === 'undefined') return () => {}
   driftWarned = false
+  plausibilityWarned = false
   const mounts = new Map<HTMLElement, Mount>()
 
   const sessionIdOf = (): SessionId | undefined => {
@@ -362,19 +430,41 @@ export function installDomFenceRenderer(
       if (settled) warnOnce(block, 'settled dsh-ui fence body does not parse; keeping the code block')
       return
     }
+    // Mount FIRST, hide AFTER (issue #19): the stock block is only ever
+    // hidden once a successfully mounted replacement stands next to it. A
+    // mount failure leaves the original code block untouched — the final
+    // answer can never be blanked by a half-completed takeover.
     const container = document.createElement('div')
     container.className = CONTAINER_CLASS
-    block.style.display = 'none'
     block.after(container)
-    block.setAttribute(PROCESSED, '')
-    const root = createRoot(container)
-    const handler: GenuiActionHandler = (action, payload) => {
-      const sid = sessionIdOf()
-      if (sid === undefined) return
-      sendAction(sid, action, payload)
+    let root: Root
+    try {
+      root = domRootFactory(container)
+    } catch (error) {
+      container.remove()
+      warnOnce(block, `failed to create a React root for a dsh-ui fence (${error instanceof Error ? error.message : String(error)}); keeping the stock code block visible`)
+      return
     }
-    root.render(<GenuiActionContext.Provider value={handler}>{node}</GenuiActionContext.Provider>)
-    mounts.set(block, { root, container, block, lastRaw: raw, lastSettled: settled })
+    try {
+      const handler: GenuiActionHandler = (action, payload) => {
+        const sid = sessionIdOf()
+        if (sid === undefined) return
+        sendAction(sid, action, payload)
+      }
+      root.render(<GenuiActionContext.Provider value={handler}>{node}</GenuiActionContext.Provider>)
+    } catch (error) {
+      try {
+        root.unmount()
+      } catch {
+        // Best-effort cleanup; removing the container below restores the DOM.
+      }
+      container.remove()
+      warnOnce(block, `failed to mount a dsh-ui fence (${error instanceof Error ? error.message : String(error)}); keeping the stock code block visible`)
+      return
+    }
+    block.style.display = 'none'
+    block.setAttribute(PROCESSED, '')
+    mounts.set(block, { root, container, block, lastRaw: raw, lastSettled: settled, lastNode: node })
   }
 
   /** Pre-paint repair: the host's React re-renders during streaming can wipe
@@ -382,15 +472,40 @@ export function installDomFenceRenderer(
    * observer microtask (before paint) so raw JSON never flashes between
    * chunks; the rAF sweep re-renders React state at its own pace. */
   function repairSurgery(): void {
-    for (const mount of mounts.values()) {
+    for (const mount of Array.from(mounts.values())) {
       const block = mount.block
-      if (!block.isConnected) continue
-      if (block.style.display !== 'none') block.style.display = 'none'
-      if (!block.hasAttribute(PROCESSED)) block.setAttribute(PROCESSED, '')
+      // The host replaced the row: the stock block is gone but our foreign
+      // container may still be attached. Drop the mount NOW (removes the
+      // orphan container) instead of waiting for the sweep — the new block
+      // will be taken over by the sweep's discovery pass.
+      if (!block.isConnected) {
+        if (mount.container.isConnected) unmountBlock(block)
+        continue
+      }
+      // Re-attach the container BEFORE re-hiding (issue #19: never hide the
+      // original while no mounted replacement stands next to it).
       if (mount.container.parentElement !== block.parentElement
           || mount.container.previousElementSibling !== block) {
         block.after(mount.container)
       }
+      if (!mount.container.isConnected) {
+        // Insertion failed (pathological host re-parent): surrender the
+        // takeover and keep the raw stock block visible rather than leaving
+        // it hidden with no replacement.
+        block.style.display = ''
+        block.removeAttribute(PROCESSED)
+        mounts.delete(block)
+        try {
+          mount.root.unmount()
+        } catch {
+          // Best-effort; the detached container gets removed below.
+        }
+        mount.container.remove()
+        warnOnce(block, 'dsh-ui replacement container could not be re-attached after a host re-render; restoring the stock code block')
+        continue
+      }
+      if (block.style.display !== 'none') block.style.display = 'none'
+      if (!block.hasAttribute(PROCESSED)) block.setAttribute(PROCESSED, '')
     }
   }
 
@@ -418,7 +533,12 @@ export function installDomFenceRenderer(
           continue
         }
       }
-      if (mount.lastRaw !== raw || mount.lastSettled !== settled) {
+      // A host re-render can also wipe the CONTENT of our container while
+      // leaving the node in place. An inline mount whose container came back
+      // empty (and was not empty by design — panel roots are) must be
+      // re-rendered, otherwise the block stays hidden behind an empty box.
+      const contentWiped = !isPanelRoot(mount.lastNode) && mount.container.childElementCount === 0
+      if (mount.lastRaw !== raw || mount.lastSettled !== settled || contentWiped) {
         const anchor = rowOf(block)
         const { key, context } = contextOf(anchor, block, settled)
         const node = renderResolvedFenceNode(raw, key, context)
@@ -426,12 +546,57 @@ export function installDomFenceRenderer(
           unmountBlock(block)
           continue
         }
+        if (contentWiped) {
+          // The old root's fiber bookkeeping points at children the host
+          // already removed — re-rendering it can throw removeChild errors
+          // on missing nodes. Rebuild the mount in place: fresh container +
+          // fresh root, block re-hidden only after the replacement exists.
+          try {
+            mount.root.unmount()
+          } catch {
+            // The host's wipe already invalidated the tree; the fresh root
+            // below is the recovery, not the old one.
+          }
+          const fresh = document.createElement('div')
+          fresh.className = CONTAINER_CLASS
+          mount.container.remove()
+          block.after(fresh)
+          try {
+            const freshRoot = domRootFactory(fresh)
+            const handler: GenuiActionHandler = (action, payload) => {
+              const sid = sessionIdOf()
+              if (sid !== undefined) sendAction(sid, action, payload)
+            }
+            freshRoot.render(<GenuiActionContext.Provider value={handler}>{node}</GenuiActionContext.Provider>)
+            mount.root = freshRoot
+            mount.container = fresh
+          } catch (error) {
+            // Never leave the stock block hidden behind a broken root:
+            // restore the raw code block and drop the mount (issue #19).
+            fresh.remove()
+            block.style.display = ''
+            block.removeAttribute(PROCESSED)
+            mounts.delete(block)
+            warnOnce(block, `failed to rebuild a wiped dsh-ui mount (${error instanceof Error ? error.message : String(error)}); restoring the stock code block`)
+            continue
+          }
+        } else {
+          try {
+            mount.root.render(<GenuiActionContext.Provider value={(action, payload) => {
+              const sid = sessionIdOf()
+              if (sid !== undefined) sendAction(sid, action, payload)
+            }}>{node}</GenuiActionContext.Provider>)
+          } catch (error) {
+            // Never leave the stock block hidden behind a broken root: restore
+            // the raw code block and drop the mount (issue #19).
+            unmountBlock(block)
+            warnOnce(block, `failed to re-render a dsh-ui fence (${error instanceof Error ? error.message : String(error)}); restoring the stock code block`)
+            continue
+          }
+        }
         mount.lastRaw = raw
         mount.lastSettled = settled
-        mount.root.render(<GenuiActionContext.Provider value={(action, payload) => {
-          const sid = sessionIdOf()
-          if (sid !== undefined) sendAction(sid, action, payload)
-        }}>{node}</GenuiActionContext.Provider>)
+        mount.lastNode = node
       }
     }
     repairSurgery()
