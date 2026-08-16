@@ -30,7 +30,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { panelStateKey } from './interaction-store.ts'
-import { clearSessionPanel, getPanelExpandToken, getPanelSpec, subscribePanel, subscribePanelExpand } from './panel-store.ts'
+import { clearSessionPanel, getPanelExpandToken, getPanelSpec, setLocalPanel, subscribePanel, subscribePanelExpand } from './panel-store.ts'
 import css from './GenuiBlock.module.css'
 
 /** Resize bounds for the panel body, in px. */
@@ -151,6 +151,18 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
           <span className={css.panelBadge}>面板</span>
           <span className={css.panelTitle}>{spec.title ?? 'GenUI 面板'}</span>
           <span className={css.panelChevron} aria-hidden>{collapsed ? '▸' : '▾'}</span>
+        </button>
+        {/* In-place dismiss (issue #23): the same local override `/panel
+            clear` applies — persists to localStorage, notifies subscribers,
+            unmounts the dock without any navigation or reload. */}
+        <button
+          type="button"
+          className={css.panelClose}
+          aria-label="关闭面板"
+          title="关闭面板"
+          onClick={() => setLocalPanel(sessionId, null)}
+        >
+          <span aria-hidden>✕</span>
         </button>
       </div>
       {!collapsed && (
