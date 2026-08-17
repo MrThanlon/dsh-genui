@@ -776,7 +776,19 @@
 
 /* ---------- file tree ---------- */
 
-.fileTree { font-family: var(--dsl-g-font-mono); font-size: var(--dsl-g-font-meta); display: flex; flex-direction: column; }
+.fileTree {
+  font-family: var(--dsl-g-font-mono);
+  font-size: var(--dsl-g-font-meta);
+  display: flex;
+  flex-direction: column;
+  /* A deep/long row must never collapse the column: the tree itself is the
+     horizontal scroll container (mirrors .tableWrap). Names additionally
+     ellipsize, so scroll appears only when indentation still overflows. */
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  max-width: 100%;
+  min-width: 0;
+}
 .ftRow { display: flex; align-items: center; gap: var(--dsl-g-gap-sm); padding: 3px var(--dsl-g-gap-xs); border-radius: var(--dsl-g-radius-control); }
 .ftRow:hover { background: var(--dsw-alias-bg-layer-1); }
 .ftIcon {
@@ -789,13 +801,22 @@
   line-height: 1;
 }
 .ftIconDir { color: var(--dsl-g-accent); font-size: 11px; }
-.ftName { color: var(--dsw-alias-label-secondary); }
+/* Long paths must stay on ONE line (issue #28: per-character vertical
+   wrapping when the host message column gets narrow). */
+.ftName {
+  color: var(--dsw-alias-label-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
 .ftDir { color: var(--dsw-alias-label-primary); font-weight: 600; }
 .ftNameBtn {
   display: inline-flex;
   align-items: center;
   gap: var(--dsl-g-gap-sm);
   min-width: 0;
+  max-width: 100%;
   background: none;
   border: none;
   font-family: inherit;
