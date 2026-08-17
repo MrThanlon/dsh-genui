@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.8.7] - 2026-08-18
+### 兼容性
+- **dsh 0.1.0-rc.7 适配核查（无需代码改动）**：rc.6 → rc.7 为全部 `dsh-*` 包整体平移升版，依赖树无增删、`@deepseek-ai/cordis` 保持 `^4.0.1`；peerDeps `^0.1.0-rc.6` 经 semver 验证已覆盖 rc.7。以 rc.7 发布包重跑 `tsc` + `tsdown` + `vitest`：287 passed / 102 skipped、0 失败，`lib` 产物与 rc.6 构建逐字节一致。rc.7 相关 API 变化仅 `dsh-client-ui-primitives` 新增 `useDismissOnOutsidePointer`（纯增量导出，本插件未使用）。
+
 ## [0.8.6] - 2026-08-16
 ### 修复
 - **原版 DSH（0.1.0-rc.6）壳上 dsh-ui 围栏全部静默不渲染**：client 入口硬注入声明 `inject: ['slots','sessions','inputTriggers']` 把 `inputTriggers` 当成了激活前置——但 cordis 的 `inject` 是**硬激活门控**：声明的服务永不出现（原版 DSH 壳没有任何插件提供 `inputTriggers` 服务，仅有 vision-toolkit 以 `ctx.inject()` 可选订阅）→ fiber 永久停在 waiting、`apply()` 永不执行 → 渲染器整体未启动：围栏保持代码块、控制台零报错。修复：从硬注入列表移除 `inputTriggers`，`/panel` 改为 `ctx.inject(['inputTriggers'], …)` **可选订阅**（服务与 slots/sessions 由不同 bundle 并发提供，任意到场顺序都能正确注册；缺失时仅不注册 `/panel`，渲染不受影响）；带该服务的宿主行为不变，原版壳上 GenUI 恢复渲染
