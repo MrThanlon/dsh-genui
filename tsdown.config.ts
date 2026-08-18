@@ -136,7 +136,7 @@ const clientConfig: UserConfig = {
  * main client bundle never contains either engine, so the eager download
  * drops from ~9 MB to the small renderer core.
  */
-function assetConfig(name: 'mermaid' | 'three', entry: string): UserConfig {
+function assetConfig(name: 'mermaid' | 'three' | 'echarts', entry: string): UserConfig {
   return {
     name: `${ID}/assets/${name}`,
     entry: { [`assets/${name}`]: entry },

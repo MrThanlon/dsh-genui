@@ -49,7 +49,7 @@ const pending = new Map<string, Promise<Record<string, unknown>>>()
  * file: repeated requests (several mermaid nodes, re-renders) share one
  * script load; a failed load stays failed for the page (the component shows
  * its fallback).
- * @param name - 'mermaid' or 'three'.
+ * @param name - 'mermaid', 'three', or 'echarts'.
  * @returns the registered engine surface.
  */
 export function loadGenuiAsset<T>(name: 'mermaid' | 'three' | 'echarts'): Promise<T> {

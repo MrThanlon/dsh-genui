@@ -49,19 +49,30 @@ function presetOption(node: GenuiEChart): Record<string, unknown> {
   const data = node.data ?? []
   const series = node.series
 
+  // Shared tooltip base: renderMode 'richText' prevents ECharts from writing
+  // tooltip content via innerHTML — labels/formatters are model output and
+  // must never reach the HTML parser.
+  const tt = (extra: Record<string, unknown> = {}): Record<string, unknown> => ({
+    renderMode: 'richText',
+    backgroundColor: t.bgLayer1,
+    borderColor: t.border,
+    textStyle: { color: t.labelPrimary },
+    ...extra,
+  })
+
   const base = {
     color: colors,
     textStyle: { color: t.labelSecondary, fontFamily: 'inherit' },
     backgroundColor: 'transparent',
     grid: { left: 48, right: 16, top: 24, bottom: 32 },
-    tooltip: { trigger: 'item', backgroundColor: t.bgLayer1, borderColor: t.border, textStyle: { color: t.labelPrimary } },
+    tooltip: tt({ trigger: 'item' }),
   }
 
   switch (node.preset) {
     case 'pie': {
       return {
         ...base,
-        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)', backgroundColor: t.bgLayer1, borderColor: t.border, textStyle: { color: t.labelPrimary } },
+        tooltip: tt({ trigger: 'item', formatter: '{b}: {c} ({d}%)' }),
         legend: { bottom: 0, textStyle: { color: t.labelTertiary } },
         series: [{
           type: 'pie',
@@ -74,30 +85,33 @@ function presetOption(node: GenuiEChart): Record<string, unknown> {
       }
     }
     case 'scatter': {
+      // xAxis is 'category' so string labels (e.g. 「一月」) render correctly;
+      // the previous `type: 'value'` xAxis could not plot non-numeric labels.
       return {
         ...base,
-        tooltip: { trigger: 'item', backgroundColor: t.bgLayer1, borderColor: t.border, textStyle: { color: t.labelPrimary } },
-        xAxis: { type: 'value', axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary }, splitLine: { lineStyle: { color: t.border, opacity: 0.5 } } },
+        tooltip: tt({ trigger: 'item' }),
+        xAxis: { type: 'category', data: data.map(d => d.label), axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary }, splitLine: { lineStyle: { color: t.border, opacity: 0.5 } } },
         yAxis: { type: 'value', axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary }, splitLine: { lineStyle: { color: t.border, opacity: 0.5 } } },
         series: [{
           type: 'scatter',
           symbolSize: 10,
-          data: data.map(d => [d.label, d.value]),
+          data: data.map(d => d.value),
         }],
       }
     }
     case 'area': {
       return {
         ...base,
-        tooltip: { trigger: 'axis', backgroundColor: t.bgLayer1, borderColor: t.border, textStyle: { color: t.labelPrimary } },
+        tooltip: tt({ trigger: 'axis' }),
         xAxis: { type: 'category', data: data.map(d => d.label), axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary } },
         yAxis: { type: 'value', axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary }, splitLine: { lineStyle: { color: t.border, opacity: 0.5 } } },
-        series: (series ?? [{ label: '', data }]).map(s => ({
+        series: (series ?? [{ label: '', data }]).map((s, i) => ({
           name: s.label,
           type: 'line',
           smooth: true,
           areaStyle: { opacity: 0.15 },
           data: s.data.map(d => d.value),
+          ...optItemStyleColor(s.color, i, series),
         })),
         legend: series !== undefined ? { bottom: 0, textStyle: { color: t.labelTertiary } } : undefined,
       }
@@ -105,16 +119,17 @@ function presetOption(node: GenuiEChart): Record<string, unknown> {
     case 'line': {
       return {
         ...base,
-        tooltip: { trigger: 'axis', backgroundColor: t.bgLayer1, borderColor: t.border, textStyle: { color: t.labelPrimary } },
+        tooltip: tt({ trigger: 'axis' }),
         xAxis: { type: 'category', data: data.map(d => d.label), axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary } },
         yAxis: { type: 'value', axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary }, splitLine: { lineStyle: { color: t.border, opacity: 0.5 } } },
-        series: (series ?? [{ label: '', data }]).map(s => ({
+        series: (series ?? [{ label: '', data }]).map((s, i) => ({
           name: s.label,
           type: 'line',
           smooth: true,
           showSymbol: true,
           symbolSize: 6,
           data: s.data.map(d => d.value),
+          ...optItemStyleColor(s.color, i, series),
         })),
         legend: series !== undefined ? { bottom: 0, textStyle: { color: t.labelTertiary } } : undefined,
       }
@@ -123,20 +138,26 @@ function presetOption(node: GenuiEChart): Record<string, unknown> {
       // 'bar' or unspecified
       return {
         ...base,
-        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, backgroundColor: t.bgLayer1, borderColor: t.border, textStyle: { color: t.labelPrimary } },
+        tooltip: tt({ trigger: 'axis', axisPointer: { type: 'shadow' } }),
         xAxis: { type: 'category', data: data.map(d => d.label), axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary } },
         yAxis: { type: 'value', axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary }, splitLine: { lineStyle: { color: t.border, opacity: 0.5 } } },
-        series: (series ?? [{ label: '', data }]).map(s => ({
+        series: (series ?? [{ label: '', data }]).map((s, i) => ({
           name: s.label,
           type: 'bar',
           barMaxWidth: 40,
-          itemStyle: { borderRadius: [4, 4, 2, 2] },
+          itemStyle: { borderRadius: [4, 4, 2, 2], ...(s.color !== undefined ? { color: s.color } : {}) },
           data: s.data.map(d => d.value),
         })),
         legend: series !== undefined ? { bottom: 0, textStyle: { color: t.labelTertiary } } : undefined,
       }
     }
   }
+}
+
+/** Per-series itemStyle.color override when the preset series declares one
+ * (aligns with the `chart` node which respects `series[].color`). */
+function optItemStyleColor(color: string | undefined, _i: number, _series: unknown): Record<string, unknown> {
+  return color !== undefined ? { itemStyle: { color } } : {}
 }
 
 export function EChartNode({ node }: { node: GenuiEChart }) {
@@ -183,13 +204,18 @@ export function EChartNode({ node }: { node: GenuiEChart }) {
     return () => { ro.disconnect() }
   }, [status])
 
-  // Update option when the node changes (model re-render).
+  // Update option when the node changes (model re-render). `status` is in
+  // deps so that when the engine finishes loading (status: 'loading' →
+  // 'ready'), this effect re-runs and applies the LATEST option — without
+  // it, a spec update that arrived during engine load would be lost forever
+  // (the mount effect captured the old option, and this effect would have
+  // returned early when status was 'loading' and never re-run).
   useEffect(() => {
     if (status !== 'ready' || instanceRef.current === null) return
     const option = node.option ?? presetOption(node)
     instanceRef.current.setOption(option, true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [node])
+  }, [node, status])
 
   if (status === 'error') {
     return (
@@ -203,7 +229,13 @@ export function EChartNode({ node }: { node: GenuiEChart }) {
   return (
     <div className={css.echartWrap} data-genui-echart>
       {node.title !== undefined && <div className={css.echartTitle}>{node.title}</div>}
-      <div ref={ref} className={css.echartCanvas} style={{ height: `${node.height ?? 300}px` }} />
+      <div
+        ref={ref}
+        className={css.echartCanvas}
+        style={{ height: `${node.height ?? 300}px` }}
+        role="img"
+        aria-label={node.title ?? 'ECharts chart'}
+      />
       {status === 'loading' && <div className={css.echartHint}>加载图表…</div>}
     </div>
   )
