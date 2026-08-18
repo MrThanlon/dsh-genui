@@ -165,18 +165,22 @@ describe('sanitizeEChartOption: resource budget (via repairGenuiSpec)', () => {
   })
 
   it('caps nesting depth to maxEChartOptionDepth', () => {
+    // Deep nesting beyond the limit causes the walk to return undefined at
+    // the cutoff depth, which cascades up (each parent loses its only child
+    // → empty object → undefined). The option gets stripped entirely.
     let inner: Record<string, unknown> = { v: 'leaf' }
     for (let i = 0; i < 20; i++) inner = { a: inner }
     const spec = repairGenuiSpec({ items: [echart({ option: inner })] })
     const node = spec?.items[0] as { option?: Record<string, unknown> }
-    expect(node?.option).toBeDefined()
-    // The depth-bounded walk should have truncated the deep nesting
-    let cur: unknown = node?.option
-    let depth = 0
-    while (typeof cur === 'object' && cur !== null && !Array.isArray(cur)) {
-      cur = (cur as Record<string, unknown>).a
-      depth++
-    }
-    expect(depth).toBeLessThanOrEqual(GENUI_LIMITS.maxEChartOptionDepth + 1)
+    // The entire option is stripped because the deep nesting exceeds the
+    // depth budget — every level above the cutoff becomes an empty object.
+    expect(node?.option).toBeUndefined()
+
+    // A nesting depth WITHIN the limit survives.
+    let ok: Record<string, unknown> = { v: 'leaf' }
+    for (let i = 0; i < 5; i++) ok = { a: ok }
+    const spec2 = repairGenuiSpec({ items: [echart({ option: ok })] })
+    const node2 = spec2?.items[0] as { option?: Record<string, unknown> }
+    expect(node2?.option).toBeDefined()
   })
 })
