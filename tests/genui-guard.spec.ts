@@ -3,7 +3,7 @@
 // `repairGenuiSpec` before rendering, so these invariants protect the UI.
 import { describe, expect, it } from 'vitest'
 import { GENUI_LIMITS, repairGenuiSpec, validateGenuiSpec } from '../src/client/guard.ts'
-import { isGenuiSpec, parseGenuiSpec } from '../src/client/spec.ts'
+import { type GenuiNode, type GenuiList, isGenuiSpec, parseGenuiSpec } from '../src/client/spec.ts'
 
 const text = (content: string) => ({ type: 'text', content })
 
@@ -198,6 +198,61 @@ describe('repairGenuiSpec: node-level healing', () => {
     expect(list.items).toEqual(['ok', { title: 't' }])
     const [kv] = spec!.items.slice(1) as Array<{ pairs: Array<{ key: string; value: string }> }>
     expect(kv.pairs).toEqual([{ key: 'k', value: 'v' }])
+  })
+})
+
+describe('repairGenuiSpec: list nodes', () => {
+  it('keeps row/text/badge children inside a list', () => {
+    const spec = repairGenuiSpec({
+      items: [
+        {
+          type: 'list',
+          items: [
+            'src',
+            {
+              type: 'row',
+              items: [
+                { type: 'text', text: 'app.ts' },
+                { type: 'badge', text: 'TS' },
+                { type: 'badge', value: '42 lines' },
+              ],
+            },
+          ],
+        },
+      ],
+    })
+    const [list] = spec!.items as Array<{ items: GenuiList['items'] }>
+    expect(list.items).toHaveLength(2)
+    expect(list.items[0]).toBe('src')
+    const row = list.items[1] as GenuiNode & { items: GenuiNode[] }
+    expect(row.type).toBe('row')
+    expect(row.items.map(item => item.type)).toEqual(['text', 'badge', 'badge'])
+    expect(row.items[0]).toMatchObject({ type: 'text', content: 'app.ts' })
+    expect(row.items[1]).toMatchObject({ type: 'badge', label: 'TS' })
+    expect(row.items[2]).toMatchObject({ type: 'badge', label: '42 lines' })
+  })
+
+  it('keeps valid entries while dropping invalid typed list nodes', () => {
+    const spec = repairGenuiSpec({
+      items: [
+        {
+          type: 'list',
+          items: [
+            'plain',
+            { type: 'row', items: [{ type: 'text', content: 'keep' }] },
+            { type: 'text' },
+            { type: 'button' },
+            { type: 'badge', label: 'ok' },
+          ],
+        },
+      ],
+    })
+    const [list] = spec!.items as Array<{ items: GenuiList['items'] }>
+    expect(list.items).toEqual([
+      'plain',
+      { type: 'row', items: [{ type: 'text', content: 'keep' }] },
+      { type: 'badge', label: 'ok' },
+    ])
   })
 })
 

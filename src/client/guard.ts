@@ -179,7 +179,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
   if (typeof type !== 'string') return null
   switch (type) {
     case 'text': {
-      const content = str(v.content, GENUI_LIMITS.maxString)
+      const content = str(v.content, GENUI_LIMITS.maxString) ?? str(v.text, GENUI_LIMITS.maxString)
       if (content === undefined) return null
       return { type: 'text', content, ...opt('size', enu(v.size, TEXT_SIZES)), ...opt('center', v.center === true ? true : undefined) }
     }
@@ -240,7 +240,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       return { type: 'link', label, ...opt('href', safeHref(v.href)) }
     }
     case 'badge': {
-      const label = str(v.label, GENUI_LIMITS.maxString)
+      const label = str(v.label, GENUI_LIMITS.maxString) ?? str(v.text, GENUI_LIMITS.maxString) ?? str(v.value, GENUI_LIMITS.maxString)
       if (label === undefined) return null
       return { type: 'badge', label, ...opt('tone', enu(v.tone, BADGE_TONES)), ...opt('icon', str(v.icon, 64)) }
     }
@@ -263,7 +263,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       return { type: 'avatar', name, ...opt('color', color(v.color)) }
     }
     case 'list': {
-      const items = repairListItems(v.items, GENUI_LIMITS.maxListItems)
+      const items = repairListItems(v.items, GENUI_LIMITS.maxListItems, ctx, depth + 1)
       if (items === undefined) return null
       return { type: 'list', items }
     }
@@ -462,7 +462,12 @@ function repairStrings(v: unknown, cap: number, strCap: number): string[] | unde
   return out
 }
 
-function repairListItems(v: unknown, cap: number): GenuiList['items'] | undefined {
+function repairListItems(
+  v: unknown,
+  cap: number,
+  ctx: RepairCtx,
+  depth: number,
+): GenuiList['items'] | undefined {
   if (!Array.isArray(v)) return undefined
   const out: GenuiList['items'] = []
   for (const item of v) {
@@ -473,8 +478,14 @@ function repairListItems(v: unknown, cap: number): GenuiList['items'] | undefine
     }
     const o = obj(item)
     const title = o === undefined ? undefined : str(o.title, GENUI_LIMITS.maxString)
-    if (title === undefined) continue
-    out.push({ title, ...opt('desc', o === undefined ? undefined : str(o.desc, GENUI_LIMITS.maxString)) })
+    if (title !== undefined) {
+      out.push({ title, ...opt('desc', o === undefined ? undefined : str(o.desc, GENUI_LIMITS.maxString)) })
+      continue
+    }
+    if (o !== undefined && typeof o.type === 'string') {
+      const node = repairNode(o, ctx, depth)
+      if (node !== null) out.push(node)
+    }
   }
   return out
 }
