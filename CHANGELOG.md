@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+### 诊断
+- **客户端激活标记（issue #33）**：两条渲染通道启动时统一打印 `[genui] client active; fence-channel=registry|dom`；文档明确区分“client.js 下载成功”与“客户端入口真正激活”，并列出宿主必须提供的 `slots` / `sessions` 服务和包身份对齐项。
+
 ## [0.8.7] - 2026-08-18
 ### 兼容性
 - **dsh 0.1.0-rc.7 适配核查（无需代码改动）**：rc.6 → rc.7 为全部 `dsh-*` 包整体平移升版，依赖树无增删、`@deepseek-ai/cordis` 保持 `^4.0.1`；peerDeps `^0.1.0-rc.6` 经 semver 验证已覆盖 rc.7。以 rc.7 发布包重跑 `tsc` + `tsdown` + `vitest`：287 passed / 102 skipped、0 失败，`lib` 产物与 rc.6 构建逐字节一致。rc.7 相关 API 变化仅 `dsh-client-ui-primitives` 新增 `useDismissOnOutsidePointer`（纯增量导出，本插件未使用）。
