@@ -10,7 +10,7 @@ import css from '../GenuiBlock.module.css'
 import { GENUI_LIMITS } from '../guard.ts'
 import type { GenuiList, GenuiNode } from '../spec.ts'
 import type { AnswersState, GenuiBlockProps } from './state.ts'
-import { avatarColor, ClickFeedbackButton } from './basic.tsx'
+import { AudioNode, avatarColor, ClickFeedbackButton, VideoNode } from './basic.tsx'
 import { ChartNode, TableNode } from './charts.tsx'
 import {
   InputNode, RadioNode, SelectNode, SliderNode, SubmitNode, SwitchNode, TextareaNode,
@@ -140,6 +140,8 @@ export function renderNode(
         ? <a key={key} className={css.link} href={href} target="_blank" rel="noopener noreferrer">{node.label}</a>
         : <span key={key} className={css.linkText}>{node.label}</span>
     }
+    case 'audio': return <AudioNode key={`${key}:${node.src}`} node={node} />
+    case 'video': return <VideoNode key={`${key}:${node.src}`} node={node} />
     case 'badge': {
       const tone = node.tone ?? ''
       return (

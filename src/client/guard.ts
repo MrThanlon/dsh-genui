@@ -111,6 +111,18 @@ function safeHref(v: unknown): string | undefined {
   return /^https?:\/\//i.test(s) || /^mailto:[^@\s]+@[^@\s]+$/i.test(s) ? s : undefined
 }
 
+/** Media loads bytes, so accept only browser-reachable http(s) or same-origin
+ * relative paths. Active/local schemes and protocol-relative URLs are
+ * rejected. The renderer always keeps playback user-controlled. */
+function safeMediaSrc(v: unknown): string | undefined {
+  if (typeof v !== 'string') return undefined
+  const s = v.trim()
+  if (s === '' || s.length > 2048) return undefined
+  if (/^https?:\/\//i.test(s)) return s
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s) || /^[/\\]{2}/.test(s)) return undefined
+  return s
+}
+
 /** Finite-number field: clamp into [min, max], or undefined when not finite. */
 function num(v: unknown, min: number, max: number): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : undefined
@@ -148,6 +160,7 @@ const INPUT_TYPES = ['text', 'email', 'password'] as const
 const CALLOUT_TONES = ['info', 'success', 'warning', 'error'] as const
 const CHART_KINDS = ['bars', 'line', 'donut'] as const
 const PLOT_KINDS = ['line', 'area', 'scatter'] as const
+const MEDIA_ASPECT_RATIOS = ['16:9', '4:3', '1:1', '9:16'] as const
 const MESH_SHAPES = ['box', 'sphere', 'cone', 'cylinder', 'torus'] as const
 const FILE_TYPES = ['file', 'dir'] as const
 
@@ -238,6 +251,27 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       const label = str(v.label, GENUI_LIMITS.maxString)
       if (label === undefined) return null
       return { type: 'link', label, ...opt('href', safeHref(v.href)) }
+    }
+    case 'audio': {
+      const src = safeMediaSrc(v.src)
+      if (src === undefined) return null
+      return {
+        type: 'audio', src,
+        ...opt('alt', str(v.alt, GENUI_LIMITS.maxString)),
+        ...opt('loop', v.loop === true ? true : undefined),
+      }
+    }
+    case 'video': {
+      const src = safeMediaSrc(v.src)
+      if (src === undefined) return null
+      return {
+        type: 'video', src,
+        ...opt('alt', str(v.alt, GENUI_LIMITS.maxString)),
+        ...opt('poster', safeMediaSrc(v.poster)),
+        ...opt('loop', v.loop === true ? true : undefined),
+        ...opt('muted', v.muted === true ? true : undefined),
+        ...opt('aspectRatio', enu(v.aspectRatio, MEDIA_ASPECT_RATIOS)),
+      }
     }
     case 'badge': {
       const label = str(v.label, GENUI_LIMITS.maxString) ?? str(v.text, GENUI_LIMITS.maxString) ?? str(v.value, GENUI_LIMITS.maxString)
@@ -880,6 +914,12 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
     case 'button': case 'checkbox': case 'link': case 'switch':
       if (typeof v.label !== 'string') errors.push(`${at}: type '${type}' requires label (string)`)
       isStr('label')
+      break
+    case 'audio': case 'video':
+      if (typeof v.src !== 'string') errors.push(`${at}: type '${type}' requires src (string)`)
+      isStr('src')
+      isStr('alt')
+      if (type === 'video') isStr('poster')
       break
     case 'slider':
       isStr('label')
