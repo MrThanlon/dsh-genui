@@ -27,14 +27,16 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 
 ---
 
-## ⚠️ 先看这里：双通道渲染（任何 dsh 版本都能用）
+## ⚠️ 先看这里：双通道渲染（无需修改宿主源码）
 
-本插件自带**两套渲染通道**，启动时自动选择，不依赖特定宿主版本：
+本插件自带**两套渲染通道**；宿主激活浏览器模块后，插件会自动选择：
 
 - **Registry 通道**：宿主提供 `fence-registry` 扩展点（新版 dsh 构建）时，围栏经宿主流式渲染管线注册，行为与宿主无缝；
 - **DOM 通道**：宿主没有该扩展点（包括原版 DSH 与旧版构建）时，插件观察会话 DOM 自行挂载渲染树。自 0.7.2 起**支持流式渲染**：模型写到哪渲染到哪，首个完成的组件立即出现，不用等整段回复写完。自 0.8.3 起围栏发现**多表面兼容**：同时匹配标准 `md-code-block` 表面、部分宿主构建使用的 deepsuite 风格 `.code-block` / `.code-block-small` 表面，并以「label+`<pre>`」结构兜底——任何 banner 标注 `dsh-ui` 且含 `<pre>` 正文的元素都能被识别。即使你的 dsh 构建用了别的类名，围栏照常渲染（控制台会有一条一次性提示说明宿主 DOM 发生漂移）。
 
 无论走哪条通道，组件、交互、面板、持久化行为完全一致。
+
+本仓库已经包含两条渲染通道、服务端插件和浏览器构建产物；宿主仍负责**激活客户端模块**，并提供 `slots` 与 `sessions` 服务。`client.js` 返回 200 或出现在 ModuleLoader 缓存里，只能证明文件下载成功；真正激活后一定会打印 `[genui] client active; fence-channel=registry|dom`。没有这行时应先核对包名/网页配置/宿主激活链，`data-streaming`、`data-chat-anchor-key` 等页面属性只是可选信息，不是安装前提。
 
 ---
 
@@ -129,7 +131,7 @@ dsh plugin --profile web add link:$PWD
 
 ## ❓ 常见问题
 
-- **显示成代码块？** 查三处：dsh 版本带 fence-registry（见顶部「双通道渲染」，无扩展点的构建走 DOM 通道兜底）、`dsh plugin --profile web list` 里有本插件、重启 + 硬刷新。
+- **显示成代码块？** 先在浏览器控制台找 `[genui] client active; fence-channel=registry|dom`。没有这行，即使 `client.js` 返回 200，也只是下载了文件、没有激活：请对齐网页配置依赖名、`package.json.name`、`cordis.patch.yml`、ModuleLoader id 和配置中的 bundle 名。出现这行后再查围栏标签/正文；宿主没有 registry 时会自动走 DOM 通道。
 - **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧——先更新 dsh 再重装插件。
 - **`dsh: pnpm not found on PATH`？** 装 pnpm 后**新开终端**再试（`corepack enable` 或 `npm i -g pnpm`）。
 - **安装时卡在 git 凭据/404？** 仓库是公开的（`omdsh-dev/dsh-genui`），上面的 git URL 无需登录；`@omdsh-dev/dsh-genui` 返回 404，表示 npm 包尚未发布。
