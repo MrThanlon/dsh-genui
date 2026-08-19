@@ -87,6 +87,7 @@ dsh plugin --profile web add link:$PWD
 
 - **Answer-as-UI**: components are embedded in the reply and appear as they stream — no waiting for the whole message
 - **30+ components**: cards, tables, charts, forms, tabs, accordions, file trees, timelines, diffs…
+- **Native media**: audio and video play inline from browser-reachable http(s) or same-origin relative URLs, with user-controlled playback, video posters/aspect ratios, and visible failure states
 - **Function plots**: `plot` draws curves; parameter sliders redraw in real time, with optional auto-animation
 
 <p align="center">

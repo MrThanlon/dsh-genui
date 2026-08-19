@@ -21,6 +21,8 @@ export type GenuiNode =
   | GenuiSelect
   | GenuiCheckbox
   | GenuiLink
+  | GenuiAudio
+  | GenuiVideo
   | GenuiBadge
   | GenuiStat
   | GenuiProgress
@@ -144,6 +146,27 @@ export interface GenuiLink {
    * styled text — never a dead clickable-looking control.
    */
   href?: string
+}
+
+/** User-controlled audio from a browser-reachable URL. */
+export interface GenuiAudio {
+  type: 'audio'
+  src: string
+  /** Visible caption and accessible player name. */
+  alt?: string
+  loop?: boolean
+}
+
+/** User-controlled video from a browser-reachable URL. */
+export interface GenuiVideo {
+  type: 'video'
+  src: string
+  /** Visible caption and accessible player name. */
+  alt?: string
+  poster?: string
+  loop?: boolean
+  muted?: boolean
+  aspectRatio?: '16:9' | '4:3' | '1:1' | '9:16'
 }
 
 export interface GenuiBadge {

@@ -100,6 +100,8 @@ describe('repairGenuiSpec: node-level healing', () => {
       { type: 'button' }, // no label
       { type: 'table', columns: ['a'] }, // no rows
       { type: 'quiz', question: 'q' }, // no options
+      { type: 'audio' }, // no src
+      { type: 'video' }, // no src
       text('kept'),
     ] })
     expect(spec?.items).toHaveLength(1)
@@ -127,6 +129,20 @@ describe('repairGenuiSpec: node-level healing', () => {
     const long = 'x'.repeat(5000)
     const spec = repairGenuiSpec({ items: [text(long)] })
     expect((spec!.items[0] as { content: string }).content).toHaveLength(GENUI_LIMITS.maxString)
+  })
+
+  it('keeps safe media URLs and rejects active or local schemes', () => {
+    const spec = repairGenuiSpec({ items: [
+      { type: 'audio', src: '/mmx-files/a.mp3', alt: 'A', loop: true },
+      { type: 'video', src: 'https://cdn.example.com/b.mp4', poster: '/b.jpg', aspectRatio: '4:3', muted: true },
+      { type: 'audio', src: 'javascript:alert(1)' },
+      { type: 'video', src: 'file:///tmp/private.mp4' },
+      { type: 'video', src: '//example.com/protocol-relative.mp4' },
+    ] })
+    expect(spec?.items).toEqual([
+      { type: 'audio', src: '/mmx-files/a.mp3', alt: 'A', loop: true },
+      { type: 'video', src: 'https://cdn.example.com/b.mp4', poster: '/b.jpg', muted: true, aspectRatio: '4:3' },
+    ])
   })
 
   it('truncates oversized code and mermaid bodies', () => {

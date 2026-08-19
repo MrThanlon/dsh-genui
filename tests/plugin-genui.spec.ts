@@ -15,7 +15,7 @@ async function assemble() {
 const WHITELISTED_COMPONENT_TYPES = [
   'text', 'row', 'col', 'grid', 'card',
   'button', 'input', 'textarea', 'select', 'checkbox', 'switch', 'slider', 'radio', 'submit', 'quiz', 'link',
-  'badge', 'stat', 'progress', 'divider', 'spacer', 'list', 'table',
+  'badge', 'stat', 'progress', 'divider', 'spacer', 'list', 'table', 'audio', 'video',
   'chart', 'tabs', 'accordion', 'avatar', 'plot', 'callout', 'steps',
   'keyvalue', 'json', 'code', 'diff', 'copy',
   'mermaid', 'scene3d', 'timeline', 'file-tree', 'breadcrumb',
@@ -35,7 +35,7 @@ describe('genui:fence section', () => {
     const text = typeof section!.text === 'string' ? section!.text : ''
     expect(text).toContain('dsh-ui')
     // The model must know the white-listed component types.
-    for (const type of ['text', 'card', 'grid', 'stat', 'table', 'chart', 'tabs', 'button', 'progress', 'plot', 'callout', 'steps', 'diff', 'mermaid', 'scene3d']) {
+    for (const type of ['text', 'card', 'grid', 'stat', 'table', 'audio', 'video', 'chart', 'tabs', 'button', 'progress', 'plot', 'callout', 'steps', 'diff', 'mermaid', 'scene3d']) {
       expect(text).toContain(type)
     }
   })
