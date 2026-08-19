@@ -31,7 +31,7 @@ description: "Render structured interactive UI inline in your reply via the dsh-
 - badge: `{"type":"badge","label":"...","tone":"success|warn|danger|accent","icon":"emoji?"}`
 - progress: `{"type":"progress","label":"...","value":0-100,"valueLabel":"70%"}`
 - avatar: `{"type":"avatar","name":"...","color":"#hex?"}`
-- list: `{"type":"list","items":["..."] 或 [{"title":"...","desc":"..."}]}`
+- list: `{"type":"list","items":["..."] 或 [{"title":"...","desc":"..."}] 或嵌套节点(如 {"type":"badge","label":"TS"})}` — 行内可嵌节点（计入节点预算）
 - table: `{"type":"table","columns":["..."],"rows":[["...","..."]]}` — 表头点击本地排序（升/降/还原，数值感知，零往返）
 - keyvalue: `{"type":"keyvalue","pairs":[{"key":"...","value":"..."}]}`
 - timeline: `{"type":"timeline","items":[{"title":"...","desc":"...","time":"..."}]}`

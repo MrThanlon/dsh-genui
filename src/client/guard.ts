@@ -179,7 +179,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
   if (typeof type !== 'string') return null
   switch (type) {
     case 'text': {
-      const content = str(v.content, GENUI_LIMITS.maxString)
+      const content = str(v.content, GENUI_LIMITS.maxString) ?? str(v.text, GENUI_LIMITS.maxString)
       if (content === undefined) return null
       return { type: 'text', content, ...opt('size', enu(v.size, TEXT_SIZES)), ...opt('center', v.center === true ? true : undefined) }
     }
@@ -240,7 +240,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       return { type: 'link', label, ...opt('href', safeHref(v.href)) }
     }
     case 'badge': {
-      const label = str(v.label, GENUI_LIMITS.maxString)
+      const label = str(v.label, GENUI_LIMITS.maxString) ?? str(v.text, GENUI_LIMITS.maxString) ?? str(v.value, GENUI_LIMITS.maxString)
       if (label === undefined) return null
       return { type: 'badge', label, ...opt('tone', enu(v.tone, BADGE_TONES)), ...opt('icon', str(v.icon, 64)) }
     }
@@ -263,7 +263,7 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       return { type: 'avatar', name, ...opt('color', color(v.color)) }
     }
     case 'list': {
-      const items = repairListItems(v.items, GENUI_LIMITS.maxListItems)
+      const items = repairListItems(v.items, GENUI_LIMITS.maxListItems, ctx, depth + 1)
       if (items === undefined) return null
       return { type: 'list', items }
     }
@@ -462,7 +462,12 @@ function repairStrings(v: unknown, cap: number, strCap: number): string[] | unde
   return out
 }
 
-function repairListItems(v: unknown, cap: number): GenuiList['items'] | undefined {
+function repairListItems(
+  v: unknown,
+  cap: number,
+  ctx: RepairCtx,
+  depth: number,
+): GenuiList['items'] | undefined {
   if (!Array.isArray(v)) return undefined
   const out: GenuiList['items'] = []
   for (const item of v) {
@@ -473,8 +478,20 @@ function repairListItems(v: unknown, cap: number): GenuiList['items'] | undefine
     }
     const o = obj(item)
     const title = o === undefined ? undefined : str(o.title, GENUI_LIMITS.maxString)
-    if (title === undefined) continue
-    out.push({ title, ...opt('desc', o === undefined ? undefined : str(o.desc, GENUI_LIMITS.maxString)) })
+    if (title !== undefined) {
+      out.push({ title, ...opt('desc', o === undefined ? undefined : str(o.desc, GENUI_LIMITS.maxString)) })
+      continue
+    }
+    if (o !== undefined && typeof o.type === 'string') {
+      // Typed children are GenuiNodes: charge them against the shared node
+      // budget (module header promise — exhausted budget elides remaining
+      // siblings). Strings and {title,desc} objects are list-item shapes,
+      // not nodes, so they never consume budget.
+      if (ctx.remaining <= 0) break
+      ctx.remaining -= 1
+      const node = repairNode(o, ctx, depth)
+      if (node !== null) out.push(node)
+    }
   }
   return out
 }
@@ -737,11 +754,12 @@ export function repairGenuiSpec(value: unknown): GenuiSpec | null {
 
 /**
  * Count the nodes of a spec tree (every item, descending into tabs /
- * accordion / file-tree containers — the same descent `validateGenuiSpec`
- * walks). Shared by the panel fold (node-budget gate) and validation, so
- * the panel never runs a second, divergent traversal. `cap` bounds the walk
- * for hostile inputs; the panel passes `PANEL_LIMITS.maxNodes + 1` to detect
- * overflow without counting the whole tree.
+ * accordion / file-tree / list containers — the same descent
+ * `validateGenuiSpec` walks). Shared by the panel fold (node-budget gate)
+ * and validation, so the panel never runs a second, divergent traversal.
+ * `cap` bounds the walk for hostile inputs; the panel passes
+ * `PANEL_LIMITS.maxNodes + 1` to detect overflow without counting the whole
+ * tree.
  */
 export function countGenuiNodes(value: unknown, cap = Number.POSITIVE_INFINITY): number {
   let count = 0
@@ -766,6 +784,14 @@ export function countGenuiNodes(value: unknown, cap = Number.POSITIVE_INFINITY):
         }
       } else if (v.type === 'file-tree' && Array.isArray(v.items)) {
         walk(v.items)
+      } else if (v.type === 'list' && Array.isArray(v.items)) {
+        // Typed list children are nodes too (repair charges them against the
+        // budget); strings and {title,desc} shapes are skipped.
+        for (const li of v.items) {
+          if (count >= cap) return
+          const lo = obj(li)
+          if (lo !== undefined && typeof lo.type === 'string') walk([lo])
+        }
       }
     }
   }
@@ -840,8 +866,11 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
   const isNum = (name: string): void => { if (v[name] !== undefined && (typeof v[name] !== 'number' || !Number.isFinite(v[name]))) errors.push(`${at}: '${name}' must be a finite number`) }
   switch (type) {
     case 'text':
-      if (typeof v.content !== 'string') errors.push(`${at}: type 'text' requires content (string)`)
+      if (typeof v.content !== 'string' && typeof v.text !== 'string') {
+        errors.push(`${at}: type 'text' requires content or text (string)`)
+      }
       isStr('content')
+      isStr('text')
       break
     case 'row': case 'col': case 'card': case 'grid':
       if (!Array.isArray(v.items)) errors.push(`${at}: type '${type}' requires items (array)`)
@@ -869,8 +898,12 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       // carries local `answer` data.
       break
     case 'badge':
-      if (typeof v.label !== 'string') errors.push(`${at}: type 'badge' requires label (string)`)
+      if (typeof v.label !== 'string' && typeof v.text !== 'string' && typeof v.value !== 'string') {
+        errors.push(`${at}: type 'badge' requires label, text, or value (string)`)
+      }
       isStr('label')
+      isStr('text')
+      isStr('value')
       break
     case 'stat':
       if (typeof v.label !== 'string') errors.push(`${at}: type 'stat' requires label (string)`)
@@ -888,6 +921,17 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       break
     case 'list':
       if (!Array.isArray(v.items)) errors.push(`${at}: type 'list' requires items (array)`)
+      if (Array.isArray(v.items)) {
+        // Descend into typed children so validation agrees with repair and
+        // rendering (they recurse into list items as GenuiNodes). Strings and
+        // {title,desc} list-item shapes are not nodes and are skipped.
+        for (let i = 0; i < v.items.length; i++) {
+          const item = obj(v.items[i])
+          if (item !== undefined && typeof item.type === 'string') {
+            validateNode(item, depth + 1, `${at}.items[${i}]`, errors, walk)
+          }
+        }
+      }
       break
     case 'table':
       if (!Array.isArray(v.columns)) errors.push(`${at}: type 'table' requires columns (array)`)

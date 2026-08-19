@@ -211,7 +211,7 @@ export interface GenuiCard {
 
 export interface GenuiList {
   type: 'list'
-  items: Array<string | { title: string; desc?: string }>
+  items: Array<string | { title: string; desc?: string } | GenuiNode>
 }
 
 export interface GenuiTable {
