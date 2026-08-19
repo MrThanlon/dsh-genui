@@ -151,7 +151,7 @@ export interface GenuiList {
     items: Array<string | {
         title: string;
         desc?: string;
-    }>;
+    } | GenuiNode>;
 }
 export interface GenuiTable {
     type: 'table';

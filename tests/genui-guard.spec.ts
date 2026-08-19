@@ -2,7 +2,7 @@
 // Pure node tests — no DOM. The fence path runs every body through
 // `repairGenuiSpec` before rendering, so these invariants protect the UI.
 import { describe, expect, it } from 'vitest'
-import { GENUI_LIMITS, repairGenuiSpec, validateGenuiSpec } from '../src/client/guard.ts'
+import { GENUI_LIMITS, countGenuiNodes, repairGenuiSpec, validateGenuiSpec } from '../src/client/guard.ts'
 import { type GenuiNode, type GenuiList, isGenuiSpec, parseGenuiSpec } from '../src/client/spec.ts'
 
 const text = (content: string) => ({ type: 'text', content })
@@ -254,6 +254,80 @@ describe('repairGenuiSpec: list nodes', () => {
       { type: 'badge', label: 'ok' },
     ])
   })
+
+  it('charges typed list children against the shared node budget', () => {
+    const badges = (n: number) => Array.from({ length: n }, (_, i) => ({ type: 'badge' as const, label: `b${i}` }))
+    const spec = repairGenuiSpec({
+      items: [
+        { type: 'list', items: badges(50) },
+        { type: 'list', items: badges(50) },
+        { type: 'list', items: badges(50) },
+        { type: 'list', items: badges(50) },
+      ],
+    })
+    const lists = spec!.items as Array<{ items: Array<{ type: string; label: string }> }>
+    // 3 full lists (3×50 badges) + 3 list nodes = 153 nodes; the 4th list
+    // node costs 1 and fits 46 more badges before the 200-node budget cuts
+    // (196 badges + 4 lists = 200 exactly). Without the deduction all 204
+    // nodes would slip through.
+    expect(lists[0]!.items).toHaveLength(50)
+    expect(lists[1]!.items).toHaveLength(50)
+    expect(lists[2]!.items).toHaveLength(50)
+    expect(lists[3]!.items).toHaveLength(46)
+    expect(countGenuiNodes(spec)).toBe(GENUI_LIMITS.maxNodes)
+  })
+
+  it('keeps title-objects, strings, and typed nodes interleaved in order', () => {
+    const spec = repairGenuiSpec({
+      items: [
+        {
+          type: 'list',
+          items: [
+            { type: 'badge', label: 'node-first' },
+            { title: 'titled', desc: 'd' },
+            'plain',
+            { type: 'text', text: 'typed-last' },
+          ],
+        },
+      ],
+    })
+    const [list] = spec!.items as Array<{ items: GenuiList['items'] }>
+    expect(list.items).toEqual([
+      { type: 'badge', label: 'node-first' },
+      { title: 'titled', desc: 'd' },
+      'plain',
+      { type: 'text', content: 'typed-last' },
+    ])
+  })
+
+  it('prefers the title form when an object carries both title and type', () => {
+    const spec = repairGenuiSpec({
+      items: [
+        { type: 'list', items: [{ title: 'T', desc: 'D', type: 'badge', label: 'B' }] },
+      ],
+    })
+    const [list] = spec!.items as Array<{ items: GenuiList['items'] }>
+    expect(list.items).toEqual([{ title: 'T', desc: 'D' }])
+  })
+
+  it('countGenuiNodes includes typed list children', () => {
+    const count = countGenuiNodes({
+      items: [
+        {
+          type: 'list',
+          items: [
+            { type: 'badge', label: 'a' },
+            { type: 'list', items: [{ type: 'text', content: 'x' }] },
+            'plain',
+            { title: 't' },
+          ],
+        },
+      ],
+    })
+    // list + badge + nested-list + nested-text = 4; the 'plain' string and
+    // {title,desc} shape are list-item entries, not nodes.
+    expect(count).toBe(4)
+  })
 })
 
 describe('validateGenuiSpec: diagnostics', () => {
@@ -289,6 +363,31 @@ describe('validateGenuiSpec: diagnostics', () => {
     const result = validateGenuiSpec({ items: [{ type: 'my-widget' }] })
     expect(result.ok).toBe(false)
     expect(result.errors.join('\n')).toContain("unknown type 'my-widget'")
+  })
+
+  it('accepts text/badge aliases the same way repair does', () => {
+    const result = validateGenuiSpec({
+      items: [
+        {
+          type: 'list',
+          items: [
+            { type: 'text', text: 'app.ts' },
+            { type: 'badge', text: 'TS' },
+            { type: 'badge', value: '42 lines' },
+            { type: 'badge', label: 'plain' },
+          ],
+        },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    expect(result.errors).toEqual([])
+  })
+
+  it('still rejects text/badge without any accepted label field', () => {
+    const result = validateGenuiSpec({ items: [{ type: 'text' }, { type: 'badge' }] })
+    expect(result.ok).toBe(false)
+    expect(result.errors.join('\n')).toContain("requires content or text")
+    expect(result.errors.join('\n')).toContain("requires label, text, or value")
   })
 })
 
