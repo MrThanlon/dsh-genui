@@ -3,7 +3,7 @@
  * (the actionable-button chip). Used by the render dispatcher.
  * @module @omdsh-dev/dsh-genui/client/blocks/basic
  */
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, type ReactNode } from 'react'
 import css from '../GenuiBlock.module.css'
 import type { GenuiAudio, GenuiVideo } from '../spec.ts'
 
@@ -46,27 +46,32 @@ export function ClickFeedbackButton({ className, disabled, onClick, children }: 
     }
   }, [])
   return (
-    <button
-      type="button"
-      className={className}
-      disabled={disabled}
-      onClick={onClick === undefined ? undefined : () => {
-        onClick()
-        if (timer.current !== null) clearTimeout(timer.current)
-        setSent(true)
-        timer.current = setTimeout(() => setSent(false), 1400)
-      }}
-    >
-      {children}
-      {sent && <span className={css.btnSent}>✓ 已触发</span>}
-    </button>
+    <>
+      <button
+        type="button"
+        className={className}
+        disabled={disabled}
+        onClick={onClick === undefined ? undefined : () => {
+          onClick()
+          if (timer.current !== null) clearTimeout(timer.current)
+          setSent(true)
+          timer.current = setTimeout(() => setSent(false), 1400)
+        }}
+      >
+        {children}
+        {sent && <span className={css.btnSent} aria-hidden>✓ 已触发</span>}
+      </button>
+      {/* Live-region sibling: button content is atomic to screen readers, so
+       * the "已触发" confirmation announces from a hidden status region. */}
+      <span className={css.visuallyHidden} role="status">{sent ? '已触发' : ''}</span>
+    </>
   )
 }
 
 /** Native controls intentionally own play/pause/seek/volume. Model-authored
  * autoplay and controls hints are ignored: media starts only after the user
  * asks for it. */
-export function AudioNode({ node }: { node: GenuiAudio }): ReactNode {
+export const AudioNode = memo(function AudioNode({ node }: { node: GenuiAudio }): ReactNode {
   const [failed, setFailed] = useState(false)
   return (
     <figure className={css.media}>
@@ -84,9 +89,9 @@ export function AudioNode({ node }: { node: GenuiAudio }): ReactNode {
           />}
     </figure>
   )
-}
+})
 
-export function VideoNode({ node }: { node: GenuiVideo }): ReactNode {
+export const VideoNode = memo(function VideoNode({ node }: { node: GenuiVideo }): ReactNode {
   const [failed, setFailed] = useState(false)
   return (
     <figure className={css.media}>
@@ -108,4 +113,4 @@ export function VideoNode({ node }: { node: GenuiVideo }): ReactNode {
           />}
     </figure>
   )
-}
+})

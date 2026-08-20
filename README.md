@@ -158,6 +158,17 @@ DEEPSEEK_API_KEY=sk-... node scripts/e2e.mjs --install git   # friend path (git 
 
 Prereqs: `dsh`/`pnpm` on PATH, `DEEPSEEK_API_KEY`, and the main repo's web build output (playwright resolves it from the main repo). On PASS it saves an `e2e-final.png` screenshot.
 
+### Visual e2e (no model key)
+
+For style/component iterations, a visual smoke that needs no API key: boots a real dsh web with the plugin link-installed, injects the component gallery fence through the DOM channel, renders it in headless Chrome, screenshots the full page, and exercises local interactions (table sort, quiz judging, tree collapse, numeric alignment) with hard assertions:
+
+```sh
+npx tsx scripts/e2e-visual.mts          # → .e2e-artifacts/gallery.png + interactions.png
+npx tsx scripts/e2e-visual.mts --keep   # keep the scratch DSH_HOME for debugging
+```
+
+Overridable: `--port 3098`, `--out <dir>`, `DSH_BIN` (defaults to the npm-mode `~/node_modules/.bin/dsh`), `PLAYWRIGHT_PATH` (defaults to the global playwright-core).
+
 ## 🗺️ Roadmap (evaluated)
 
 | Direction | Verdict | Rationale |

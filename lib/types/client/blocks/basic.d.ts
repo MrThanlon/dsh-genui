@@ -19,9 +19,9 @@ export declare function ClickFeedbackButton({ className, disabled, onClick, chil
 /** Native controls intentionally own play/pause/seek/volume. Model-authored
  * autoplay and controls hints are ignored: media starts only after the user
  * asks for it. */
-export declare function AudioNode({ node }: {
+export declare const AudioNode: import("react").NamedExoticComponent<{
     node: GenuiAudio;
-}): ReactNode;
-export declare function VideoNode({ node }: {
+}>;
+export declare const VideoNode: import("react").NamedExoticComponent<{
     node: GenuiVideo;
-}): ReactNode;
+}>;

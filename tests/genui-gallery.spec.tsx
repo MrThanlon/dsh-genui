@@ -32,6 +32,7 @@ describe('gallery spec', () => {
     expect(body).toContain('成功')
     expect(body).toContain('CPU')
     expect(body).toContain('训练进度')
+    expect(document.querySelector('audio[controls][preload="none"]')).not.toBeNull()
     expect(body).toContain('性能指标')
     expect(body).toContain('版本')
     expect(body).toContain('标题项')
