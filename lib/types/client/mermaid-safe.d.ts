@@ -38,3 +38,10 @@ export declare function assertSafeSvg(svg: string): void;
  * nested quotes, and restored last.
  */
 export declare function repairMermaidSource(code: string): string;
+/**
+ * Lenient repair for sources that omit the mandatory diagram-type
+ * declaration line (model-generated mermaid): when the first token is not an
+ * already-declared `graph`/`flowchart` kind but the body contains flowchart
+ * edge arrows, prepend `graph TD`. Anything else is returned unchanged.
+ */
+export declare function ensureFlowchartKind(code: string): string;
