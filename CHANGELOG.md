@@ -1,6 +1,8 @@
 # Changelog
 
 ## [Unreleased]
+### 兼容性
+- **dsh 0.1.0-rc.8**：对齐全部宿主 peer 依赖并补齐实际使用的 conversation、input-trigger、session 直接声明；改用 ui-tool 的公开客户端入口，测试和构建不再读取本机旧源码快照。`tsc`、`tsdown`、Vitest 全通过（302 passed / 104 skipped，0 失败）。
 ### 新增
 - **原生音视频组件（issue #35）**：白名单新增 `audio` / `video`，直接播放工具通过 http(s) 或同源相对地址暴露的媒体；两者固定使用原生控制器且不自动播放，支持循环，视频另支持封面、初始静音和 16:9 / 4:3 / 1:1 / 9:16 比例，加载失败原位提示。危险或本地协议被丢弃，未增加播放器依赖。
 ### 诊断

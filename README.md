@@ -167,7 +167,7 @@ Prereqs: `dsh`/`pnpm` on PATH, `DEEPSEEK_API_KEY`, and the main repo's web build
 | Cross-session state persistence (replay restores tabs/switches) | Not doing | Replay-reset is the more correct default (the model has already updated the UI with a new fence); state survives naturally during streaming |
 | MCP adapter / standalone gallery page / i18n | Not doing | No cross-tool demand signal; gallery material is covered by `gallery.ts` + demo-prompts + README screenshots; only 6 built-in strings |
 
-Tests parse the dsh source (`vitest.config.ts`'s `DSH_ROOT`, default `~/.dsh/source/current`).
+Unit tests and builds use the locked published dsh rc.8 packages. `DSH_ROOT` is only needed by source-level or end-to-end checks.
 
 ## 🔗 Friendly links
 
