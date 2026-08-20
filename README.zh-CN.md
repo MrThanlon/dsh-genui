@@ -167,7 +167,7 @@ DEEPSEEK_API_KEY=sk-... node scripts/e2e.mjs --install git   # 朋友路径（gi
 | 跨会话状态持久化（回放恢复 tabs/开关） | 不做 | 回放重置是更正确的默认行为（模型已用新 fence 更新过界面）；流式期间状态天然保留 |
 | MCP 适配器 / 独立画廊页 / i18n | 不做 | 无跨工具需求信号；画廊素材已被 `gallery.ts` + demo-prompts + README 截图覆盖；内置文案仅 6 处 |
 
-测试解析 dsh 源码（`vitest.config.ts` 的 `DSH_ROOT`，默认 `~/.dsh/source/current`）。
+单元测试和构建直接使用锁定的 dsh rc.8 发布包；只有源码级或端到端检查才需要设置 `DSH_ROOT`。
 
 ## 🔗 友情链接
 
