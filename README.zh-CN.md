@@ -158,6 +158,17 @@ DEEPSEEK_API_KEY=sk-... node scripts/e2e.mjs --install git   # 朋友路径（gi
 
 前置：`dsh`/`pnpm` 在 PATH、`DEEPSEEK_API_KEY`、主仓 web 构建产物（playwright 从主仓解析）。PASS 时保存 `e2e-final.png` 截图。
 
+### 视觉 e2e（无需模型 key）
+
+样式/组件迭代用：起真实 dsh web + link 安装插件 → 通过 DOM 通道注入组件画廊围栏 → headless Chrome 全页截图 + 本地交互（表格排序 / 判题 / 目录折叠 / 数值对齐）硬断言，不需要任何模型额度：
+
+```sh
+npx tsx scripts/e2e-visual.mts          # → .e2e-artifacts/gallery.png + interactions.png
+npx tsx scripts/e2e-visual.mts --keep   # 保留 scratch DSH_HOME 便于排查
+```
+
+可覆盖：`--port 3098`、`--out <dir>`、`DSH_BIN`（默认 npm 生产模式 `~/node_modules/.bin/dsh`）、`PLAYWRIGHT_PATH`（默认全局 playwright-core）。
+
 ## 🗺️ Roadmap（已评估项）
 
 | 方向 | 结论 | 理由 |
