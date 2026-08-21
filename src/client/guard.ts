@@ -491,7 +491,19 @@ function repairStrings(v: unknown, cap: number, strCap: number): string[] | unde
   const out: string[] = []
   for (const item of v) {
     if (out.length >= cap) break
-    if (typeof item === 'string') out.push(item.slice(0, strCap))
+    if (typeof item === 'string') {
+      out.push(item.slice(0, strCap))
+    } else if (item !== null && typeof item === 'object') {
+      // 兼容模型误用对象数组（如把 ask_user_question 的 {label,description}
+      // 格式错用到 select/radio 的 options）——提取可读字段，而不是静默丢
+      // 掉整个选项，让用户看到「选项没列举出来」的空列表。
+      const o = item as Record<string, unknown>
+      const s = typeof o.label === 'string' ? o.label
+        : typeof o.value === 'string' ? o.value
+        : typeof o.title === 'string' ? o.title
+        : JSON.stringify(item)
+      out.push(s.slice(0, strCap))
+    }
   }
   return out
 }
