@@ -120,10 +120,11 @@ export function apply(ctx: Context): () => void {
   // ships it (contract line), the DOM observer otherwise (pristine line).
   // One plugin build serves both deployments.
   const registerFn = (primitives as unknown as HostFenceExt).registerFenceRenderer
+  const channel = typeof registerFn === 'function' ? 'registry' : 'dom'
+  console.info(`[genui] client active; fence-channel=${channel}`)
   const disposers: Array<() => void> = typeof registerFn === 'function'
     ? [registerFn('dsh-ui', renderGenuiFence)]
-    : (console.info('[genui] fence-registry 扩展点不存在（原版 DSH）——启用 DOM 渲染通道'),
-      [installDomFenceRenderer(ctx, (sessionId, action, payload) => sendInlineGenuiAction(ctx, sessionId, action, payload))])
+    : [installDomFenceRenderer(ctx, (sessionId, action, payload) => sendInlineGenuiAction(ctx, sessionId, action, payload))]
   // Idle prefetch of the lazy engine assets: the browser downloads them at
   // LOW priority whenever the page is idle, so the first mermaid/3D node in
   // a session usually hits a warm cache instead of paying the fetch on first
@@ -150,25 +151,43 @@ export function apply(ctx: Context): () => void {
   // opens the panel dock (publishes the default spec + expand request),
   // clears it (/panel clear), or relays an instruction to the model
   // (/panel <指令>) so the panel gets tailored content.
-  const slash = ctx.get('inputTriggers') as InputTriggerServiceContract | undefined
-  if (slash !== undefined) {
-    disposers.push(ctx.effect(() => slash.registerSource(
+  //
+  // inputTriggers is subscribed via cordis OPTIONAL injection (ctx.inject),
+  // NOT a one-shot ctx.get() at apply time: the service is typically
+  // provided by a different bundle than slots/sessions, so it can arrive
+  // AFTER apply() runs — a one-shot lookup would silently disable /panel
+  // even on hosts that DO ship the service (service arrival order race).
+  // ctx.inject activates the callback only when the service arrives (any
+  // order) and disposes with the subscription fiber; hosts without the
+  // service simply never register /panel, and rendering is unaffected
+  // either way.
+  ctx.inject(['inputTriggers'], (scope) => {
+    const slash = scope.get('inputTriggers') as InputTriggerServiceContract | undefined
+    if (slash === undefined) return
+    scope.effect(() => slash.registerSource(
       createPanelSlashSource((sessionId, instruction) => sendPanelInstruction(ctx, sessionId, instruction)),
-    ), 'genui: /panel'))
-  } else {
-    console.warn('[genui] inputTriggers service unavailable; /panel command disabled')
-  }
+    ), 'genui: /panel')
+  })
   return () => {
     for (const dispose of disposers) dispose()
   }
 }
 
 // Browser services the client entry needs: the slots registry (toolview +
-// dock), sessions (scoped conversation send behind actions), and
-// inputTriggers (the /panel command source). This declaration is what the
-// host's fiber inject waiting uses — without it apply() runs before the
-// services bind and the whole plugin tree fails the boot sweep.
-export const inject = ['slots', 'sessions', 'inputTriggers']
+// dock) and sessions (scoped conversation send behind actions). This
+// declaration is what the host's fiber inject waiting uses — without it
+// apply() runs before the services bind and the whole plugin tree fails the
+// boot sweep.
+//
+// inputTriggers (the /panel command source) is deliberately NOT declared:
+// cordis `inject` is a hard activation gate — a declared service that is
+// never provided (pristine DSH shells ship no inputTriggers provider) parks
+// the fiber in waiting forever and apply() never runs, silently killing all
+// GenUI rendering. Instead the apply() body subscribes via ctx.inject
+// (optional injection): hosts with the service get /panel registered in any
+// arrival order, hosts without it never register /panel — and the renderer
+// itself never depends on the service either way.
+export const inject = ['slots', 'sessions']
 
 // Re-export the registry renderer for the test suite (setup.ts registers it
 // exactly like apply() does on contract hosts).

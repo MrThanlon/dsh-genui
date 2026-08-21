@@ -12,7 +12,7 @@ import {
 } from '../src/client/panel-store.ts'
 import { GenuiToolView } from '../src/client/toolview.tsx'
 import type { ToolCallBlock } from '@deepseek-ai/dsh-client-runtime/client'
-import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/src/client/contract/slots'
+import type { ToolCallViewProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 
 afterEach(() => {
   cleanup()
@@ -80,6 +80,26 @@ describe('GenuiPanel dock', () => {
   it('renders nothing without a published spec', () => {
     const { container } = renderPanel()
     expect(container.querySelector('[data-genui-panel]')).toBeNull()
+  })
+
+  it('dismisses the panel in place via the header ✕ button and persists the cleared state (issue #23)', () => {
+    direct('s1', { title: 'T', items: [text('x')] })
+    const { container } = renderPanel()
+    expect(container.querySelector('[data-genui-panel]')).not.toBeNull()
+    const close = container.querySelector<HTMLButtonElement>('[aria-label="关闭面板"]')
+    expect(close).not.toBeNull()
+    fireEvent.click(close!)
+    // Same semantics as `/panel clear`: snapshot folds to null in memory,
+    // subscribers notified, dock unmounts without navigation or reload.
+    expect(getPanelSpec('s1')).toBeNull()
+    expect(container.querySelector('[data-genui-panel]')).toBeNull()
+    const persisted = JSON.parse(localStorage.getItem('dsh.genui.panel') ?? '{}') as { sessions: Record<string, { snapshot: unknown }> }
+    expect(persisted.sessions['s1']?.snapshot).toBeNull()
+    // A later publish re-opens the dock exactly as after `/panel clear`.
+    act(() => {
+      direct('s1', { title: 'T2', items: [text('y')] })
+    })
+    expect(container.querySelector('[data-genui-panel]')).not.toBeNull()
   })
 
   it('shows a resize handle on the top edge when expanded and resizes the body on drag', () => {

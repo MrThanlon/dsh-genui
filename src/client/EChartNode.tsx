@@ -141,7 +141,7 @@ function presetOption(node: GenuiEChart): Record<string, unknown> {
         tooltip: tt({ trigger: 'axis', axisPointer: { type: 'shadow' } }),
         xAxis: { type: 'category', data: data.map(d => d.label), axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary } },
         yAxis: { type: 'value', axisLine: { lineStyle: { color: t.border } }, axisLabel: { color: t.labelTertiary }, splitLine: { lineStyle: { color: t.border, opacity: 0.5 } } },
-        series: (series ?? [{ label: '', data }]).map((s, i) => ({
+        series: (series ?? [{ label: '', data }]).map(s => ({
           name: s.label,
           type: 'bar',
           barMaxWidth: 40,
