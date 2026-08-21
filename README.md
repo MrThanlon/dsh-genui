@@ -4,15 +4,32 @@
 
 **English** · [简体中文](./README.zh-CN.md)
 
+<br>
+
+[**Open the live product site**](https://omdsh-dev.github.io/dsh-genui/) · [**Watch the real demo**](#watch-the-real-interface) · [**Install in DSH**](#quick-start)
+
 </div>
 
 > Give the model's answers a face — the text is still there, and an interactive UI is already live.
 >
 > 🔌 Ecosystem: the repo carries the `#dsh` · `#dsh-plugin` topics — welcome to be listed by @dsh-plugin.
->
-> 🌐 **Live Product Site:** [Explore dsh-genui in DSH](https://omdsh-dev.github.io/dsh-genui/)
 
-The model no longer just answers in text. Install this plugin, ask "how are this month's orders doing", and it renders a **clickable data panel** right inside the answer as it analyzes: watch trends, drag sliders, hit refresh — and the model actually responds.
+`dsh-genui` turns a model reply into a **safe, interactive DSH surface**. Ask “how are this month’s orders doing?” and the answer can include a sortable data panel, a native video, a draggable plot, a local quiz, or a persistent session panel — without replacing the surrounding text.
+
+## Start with the evidence
+
+| If you want to… | Go straight to… | What you can verify |
+|---|---|---|
+| See the complete DSH flow first | [40-second real walkthrough](#40-second-walkthrough) | Components are rendered inside a real DSH conversation. |
+| Inspect concrete UI outputs | [Three real outputs](#three-real-outputs-inside-a-dsh-reply) | Monitoring, function plots, and composable layout primitives. |
+| Try it in your own DSH | [Quick start](#quick-start) | A public Git install, a prompt to run, and an activation check. |
+| Learn the JSON language | [Component syntax](./SKILL.md) | The supported, guarded `dsh-ui` component specification. |
+
+## Watch the real interface
+
+> **No concept mockups.** The recording and images in this section are captured from `dsh-genui` rendering in the DSH interface. Use them to see the actual visual language before installing.
+
+### 40-second walkthrough
 
 <div align="center">
 
@@ -21,11 +38,34 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 </div>
 
 <p align="center">
-  <img src="./assets/showcase-panel.png" width="92%" alt="Real rendering: an interactive monitoring panel">
-  <br><em>Real output: an interactive monitoring panel rendered by the model (click "refresh" and it regenerates the data)</em>
+  <a href="./assets/demo.mp4"><img src="./assets/demo-thumb.png" width="92%" alt="Preview of the complete dsh-genui walkthrough video"></a>
+  <br><em>Click the preview to download the original MP4 if the GitHub player is unavailable.</em>
 </p>
 
-> Player won't load? [Download the mp4](./assets/demo.mp4). Four-act demo script: [demo-prompts.md](./demo-prompts.md).
+The walkthrough moves from an answer-embedded panel through forms, plotting, Mermaid, and 3D-oriented components. The player does **not** auto-play. If it does not load, use the [original MP4](./assets/demo.mp4); the four-step prompt sequence is documented in [demo-prompts.md](./demo-prompts.md).
+
+### Three real outputs inside a DSH reply
+
+#### 1. A monitoring panel is an answer, not a separate dashboard
+
+<p align="center">
+  <img src="./assets/showcase-panel.png" width="92%" alt="Real dsh-genui monitoring panel rendered inside a DSH conversation">
+  <br><em>Real output: refresh/reset controls, time-range selection, statistics, charts, and a service table live inside the assistant reply.</em>
+</p>
+
+#### 2. A function plot redraws locally as its parameters change
+
+<p align="center">
+  <img src="./assets/showcase-plot.png" width="76%" alt="Real dsh-genui function plot with draggable parameter sliders">
+  <br><em>Real output: `plot` renders curves while sliders, reset, and animation controls update the graph locally.</em>
+</p>
+
+#### 3. Layout primitives compose into structured work surfaces
+
+<p align="center">
+  <img src="./assets/showcase.png" width="76%" alt="Real dsh-genui layout and card component composition">
+  <br><em>Real output: typography, grid, card, and row/column primitives combine into a hierarchy the model can describe declaratively.</em>
+</p>
 
 ---
 
@@ -65,7 +105,15 @@ dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-genui.git
 
 > ⚠️ **Don't use `link:` on a freshly cloned directory** — `link:` does not install the plugin's dependencies (mermaid / three / react), so the renderer will break. Use the git URL form above; reserve `link:` for local development iteration (see below).
 
-Restart dsh web + hard refresh, then in a new session say "use dsh-ui to draw a stats dashboard" to verify.
+### Verify the install in 60 seconds
+
+After the command completes, restart dsh web and hard-refresh the browser. In a **new** session, say:
+
+```text
+Use dsh-ui to draw a stats dashboard with a sortable service table.
+```
+
+You should see the reply turn into an in-place dashboard rather than a code block. For an unambiguous technical check, open the browser console: successful activation prints `[genui] client active; fence-channel=registry|dom`.
 
 ### One-click script (recommended)
 
@@ -85,16 +133,22 @@ pnpm install
 dsh plugin --profile web add link:$PWD
 ```
 
-## 🧩 What it can do
+## 🧩 Capability map
+
+| Surface | First thing to try | Observable behavior |
+|---|---|---|
+| Data | Ask for an order or service dashboard | `stat`, `table`, `chart`, and `progress` appear inside the reply; supported numeric table values sort numerically. |
+| Media | Ask for an audio or video reference | Browser-reachable media plays inline, with poster/aspect-ratio and failure states. |
+| Exploration | Ask for `plot` with a parameter | Dragging sliders redraws the curve locally and immediately. |
+| Feedback | Ask for a short quiz | The UI grades and explains locally; only the next model step needs an `action`. |
+| Workspace | Ask for `/panel` or `panel: true` | A persistent, resizable session dock is updated in place. |
+
+The following is the detailed capability reference. Every behavior is constrained by the whitelisted `dsh-ui` specification; see [SKILL.md](./SKILL.md) for the JSON syntax.
 
 - **Answer-as-UI**: components are embedded in the reply and appear as they stream — no waiting for the whole message
 - **30+ components**: cards, tables, charts, forms, tabs, accordions, file trees, timelines, diffs…
 - **Native media**: audio and video play inline from browser-reachable http(s) or same-origin relative URLs, with user-controlled playback, video posters/aspect ratios, and visible failure states
 - **Function plots**: `plot` draws curves; parameter sliders redraw in real time, with optional auto-animation
-
-<p align="center">
-  <img src="./assets/showcase-plot.png" width="60%" alt="Function plotting: drag a slider for live redraw">
-</p>
 
 - **Quiz**: `quiz` grades on click with explanation and retry; with `action`, the answer is also sent back to the model (grading stays local and instant)
 - **Local grading (submit)**: a multiple-choice set = one `radio` per question with `group` + `answer` (correct answer) + `explanation`, plus one `submit` button — after the user answers everything and clicks once, **the score, per-question right/wrong, and explanations appear right in the UI with zero model round-trips**; the quiz then locks, and "retake" resets locally (optional `resetAction` notifies the model). Questions without an answer fall back to an aggregated action (`fields` collects every input with an `id`)
