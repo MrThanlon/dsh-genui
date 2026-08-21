@@ -209,7 +209,10 @@ export function DiagramNode({ node }: { node: GenuiDiagram }) {
   const layout = useMemo(() => resolveLayout(node, buildParentMap(node.edges ?? [])), [node])
 
   const byId = useMemo(() => new Map(layout.nodes.map(l => [l.node.id, l.box])), [layout])
+  // figcaption gets its own id so aria-labelledby can point at the SVG <title>
+  // alone — sharing one id between the two renders duplicates ids in the DOM.
   const titleId = `${uid}-title`
+  const captionId = `${uid}-caption`
   const descId = `${uid}-desc`
 
   // Complexity budget is enforced by the guard; belt-and-suspenders here.
@@ -228,7 +231,7 @@ export function DiagramNode({ node }: { node: GenuiDiagram }) {
   return (
     <figure className="genui-diagram" data-genui-diagram>
       {node.title !== undefined && (
-        <figcaption id={titleId} style={{ fontFamily: "Instrument Serif, 'Times New Roman', serif", fontSize: 20, marginBottom: 8, color: palette.ink }}>
+        <figcaption id={captionId} style={{ fontFamily: "Instrument Serif, 'Times New Roman', serif", fontSize: 20, marginBottom: 8, color: palette.ink }}>
           {node.title}
         </figcaption>
       )}
