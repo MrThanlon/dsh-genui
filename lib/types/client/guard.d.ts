@@ -60,6 +60,13 @@ export declare const GENUI_LIMITS: {
     readonly maxKeyValuePairs: 24;
     /** Maximum `file-tree` nesting. */
     readonly maxTreeDepth: 6;
+    /** Maximum `diagram` nodes / edges / zones / focal accents (editorial
+     * complexity budget, mirroring diagram-design's §7 limits). */
+    readonly maxDiagramNodes: 9;
+    readonly maxDiagramEdges: 12;
+    readonly maxDiagramZones: 3;
+    readonly maxDiagramFocal: 2;
+    readonly maxDiagramLabel: 14;
 };
 /** Result of `validateGenuiSpec`. */
 export interface GenuiValidation {

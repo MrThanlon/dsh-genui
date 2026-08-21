@@ -9,7 +9,7 @@
  * are operable, but events do NOT flow back to the model.
  */
 /** One node in the component tree. */
-export type GenuiNode = GenuiText | GenuiRow | GenuiCol | GenuiGrid | GenuiCard | GenuiButton | GenuiInput | GenuiSelect | GenuiCheckbox | GenuiLink | GenuiAudio | GenuiVideo | GenuiBadge | GenuiStat | GenuiProgress | GenuiDivider | GenuiList | GenuiTable | GenuiChart | GenuiTabs | GenuiAvatar | GenuiSpacer | GenuiPlot | GenuiCallout | GenuiSteps | GenuiKeyValue | GenuiDiff | GenuiJson | GenuiCode | GenuiRadio | GenuiSubmit | GenuiSwitch | GenuiSlider | GenuiTextarea | GenuiAccordion | GenuiCopy | GenuiMermaid | GenuiScene3D | GenuiTimeline | GenuiFileTree | GenuiBreadcrumb | GenuiQuiz;
+export type GenuiNode = GenuiText | GenuiRow | GenuiCol | GenuiGrid | GenuiCard | GenuiButton | GenuiInput | GenuiSelect | GenuiCheckbox | GenuiLink | GenuiAudio | GenuiVideo | GenuiBadge | GenuiStat | GenuiProgress | GenuiDivider | GenuiList | GenuiTable | GenuiChart | GenuiTabs | GenuiAvatar | GenuiSpacer | GenuiPlot | GenuiCallout | GenuiSteps | GenuiKeyValue | GenuiDiff | GenuiJson | GenuiCode | GenuiRadio | GenuiSubmit | GenuiSwitch | GenuiSlider | GenuiTextarea | GenuiAccordion | GenuiCopy | GenuiMermaid | GenuiScene3D | GenuiTimeline | GenuiFileTree | GenuiBreadcrumb | GenuiQuiz | GenuiDiagram;
 export interface GenuiSpec {
     /** Short title shown as the card banner. */
     title?: string;
@@ -473,6 +473,92 @@ export interface GenuiQuiz {
      * (`{type:'quiz', question, answer, correct}`) so the model can collect
      * or grade it. */
     action?: string;
+}
+/** Editorial diagram kinds, ported from cathrynlavery/diagram-design (27 types). */
+export declare const DIAGRAM_KINDS: readonly ["architecture", "it-state", "flowchart", "sequence", "state", "er", "timeline", "swimlane", "quadrant", "radar", "loop", "nested", "tree", "org-chart", "layers", "venn", "pyramid", "bar", "line", "gantt", "scatter", "high-level", "process", "medallion", "data-flow", "dp-integration", "dp-security-matrix"];
+export type GenuiDiagramKind = typeof DIAGRAM_KINDS[number];
+/** Diagram surface variant: light / dark follow the host theme; editorial is the full skin. */
+export type GenuiDiagramVariant = 'light' | 'dark' | 'editorial';
+/** Node treatment classes (map to the diagram-design semantic fills/strokes). */
+export type GenuiDiagramNodeType = 'focal' | 'backend' | 'store' | 'external' | 'input' | 'optional' | 'security';
+/** One positioned node in a coordinate-mode diagram. */
+export interface GenuiDiagramNode {
+    /** Stable node id referenced by edges. */
+    id: string;
+    /** Human-readable label (Geist sans in the renderer). */
+    label: string;
+    /** Optional technical sublabel (Geist mono in the renderer). */
+    sub?: string;
+    /** Semantic treatment; `focal` is budgeted (max 2 per diagram). */
+    type?: GenuiDiagramNodeType;
+    /** Position / size (coordinate-mode kinds only). 4px grid is enforced at render. */
+    x?: number;
+    y?: number;
+    w?: number;
+    h?: number;
+    /** Optional rectangular type tag (e.g. `API`). */
+    tag?: string;
+}
+/** One connector between two nodes. */
+export interface GenuiDiagramEdge {
+    /** Source node id. */
+    from: string;
+    /** Target node id. */
+    to: string;
+    /** Optional edge label (all-caps, <=14 chars in the renderer). */
+    label?: string;
+    /** Stroke semantics: solid (default), dashed (optional/async), accent, link (HTTP/API). */
+    kind?: 'solid' | 'dashed' | 'accent' | 'link';
+    /** Route hint; `auto` (default) lets the renderer choose orthogonal routing. */
+    route?: 'auto' | 'orthogonal' | 'straight';
+}
+/** Optional brand override; every key maps to a diagram-design semantic token. */
+export interface GenuiDiagramTheme {
+    paper?: string;
+    'paper-2'?: string;
+    ink?: string;
+    muted?: string;
+    soft?: string;
+    rule?: string;
+    accent?: string;
+    'accent-tint'?: string;
+    link?: string;
+}
+/** Zone container: a labelled region grouping related nodes (max 3). */
+export interface GenuiDiagramZone {
+    /** Zone label (mono uppercase eyebrow in the renderer). */
+    label: string;
+    /** Bounding box in the same canvas space as the nodes. */
+    x?: number;
+    y?: number;
+    w?: number;
+    h?: number;
+}
+/**
+ * Editorial diagram (diagram-design port): a white-listed declarative diagram
+ * rendered as inline SVG by the browser. `kind` selects the layout grammar
+ * (coordinate kinds place nodes via x/y; rule kinds auto-layout from data),
+ * `variant` selects the skin, and `theme` overrides semantic tokens. The
+ * renderer enforces the editorial constraints — orthogonal connectors, 4px
+ * grid, complexity budget, focal accent budget — so the model cannot emit
+ * "AI slop" schematics.
+ */
+export interface GenuiDiagram {
+    type: 'diagram';
+    /** The 27-type editorial vocabulary. */
+    kind: GenuiDiagramKind;
+    /** Surface skin; default follows the host theme. */
+    variant?: GenuiDiagramVariant;
+    /** Optional diagram title (Instrument Serif in the renderer). */
+    title?: string;
+    /** Nodes (coordinate kinds use x/y/w/h; rule kinds may omit positions). */
+    nodes: GenuiDiagramNode[];
+    /** Connectors. */
+    edges?: GenuiDiagramEdge[];
+    /** Optional labelled regions grouping nodes (max 3). */
+    zones?: GenuiDiagramZone[];
+    /** Optional semantic-token overrides. */
+    theme?: GenuiDiagramTheme;
 }
 /** Parse the raw fence body as a GenuiSpec, or null when it is not one. */
 export declare function parseGenuiSpec(raw: string): GenuiSpec | null;
