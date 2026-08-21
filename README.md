@@ -9,6 +9,8 @@
 > Give the model's answers a face — the text is still there, and an interactive UI is already live.
 >
 > 🔌 Ecosystem: the repo carries the `#dsh` · `#dsh-plugin` topics — welcome to be listed by @dsh-plugin.
+>
+> 🌐 **Live Product Site:** [Explore dsh-genui in DSH](https://omdsh-dev.github.io/dsh-genui/)
 
 The model no longer just answers in text. Install this plugin, ask "how are this month's orders doing", and it renders a **clickable data panel** right inside the answer as it analyzes: watch trends, drag sliders, hit refresh — and the model actually responds.
 
