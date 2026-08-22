@@ -69,6 +69,18 @@ export const GENUI_LIMITS = {
   maxDiagramZones: 3,
   maxDiagramFocal: 2,
   maxDiagramLabel: 14,
+
+  /** Maximum depth of an `echart` option object (prevents pathological nested
+   * ECharts configs from stalling the guard walk). */
+  maxEChartOptionDepth: 10,
+  /** Maximum length of any single array inside an `echart` option (prevents
+   * a model from stalling rendering with `series.data` of hundreds of
+   * thousands of points). */
+  maxEChartArrayLen: 500,
+  /** Maximum total entries (object keys + array elements) traversed while
+   * sanitizing an `echart` option. Bounds the walk so a pathologically
+   * large option object cannot stall the guard. */
+  maxEChartOptionNodes: 2000,
 } as const
 
 /** Result of `validateGenuiSpec`. */
@@ -180,6 +192,8 @@ const DIAGRAM_NODE_TYPES = ['focal', 'backend', 'store', 'external', 'input', 'o
 const DIAGRAM_VARIANTS = ['light', 'dark', 'editorial'] as const
 const DIAGRAM_EDGE_KINDS = ['solid', 'dashed', 'accent', 'link'] as const
 const DIAGRAM_ROUTES = ['auto', 'orthogonal', 'straight'] as const
+
+const ECHART_PRESETS = ['bar', 'line', 'area', 'pie', 'scatter'] as const
 
 /* ---------------- repair ---------------- */
 
@@ -496,6 +510,36 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
         ...opt('explanation', str(v.explanation, GENUI_LIMITS.maxString)),
         ...opt('id', str(v.id, 200)),
         ...opt('action', str(v.action, 200)),
+      }
+    }
+    case 'echart': {
+      // Preset shorthand data/series reuse the chart repair helpers.
+      const data = v.data !== undefined ? repairChartData(v.data, GENUI_LIMITS.maxChartPoints) : undefined
+      const series = v.series !== undefined && Array.isArray(v.series)
+        ? repairSeries(v.series, GENUI_LIMITS.maxPlotSeries, GENUI_LIMITS.maxChartPoints)
+        : undefined
+      // Full option: depth-bounded pass-through (the model writes the ECharts
+      // option object; the guard walks it to cap nesting but does not
+      // validate ECharts semantics — that is echarts' own job).
+      const sanitized = v.option !== undefined
+        ? sanitizeEChartOption(v.option, 0, { count: GENUI_LIMITS.maxEChartOptionNodes })
+        : undefined
+      // A chart option root is always a plain object; a scalar root is
+      // invalid, so degrade to preset/data/series handling (option dropped).
+      const option: Record<string, unknown> | undefined =
+        sanitized === undefined || typeof sanitized !== 'object' || sanitized === null || Array.isArray(sanitized)
+          ? undefined
+          : sanitized as Record<string, unknown>
+      // At least one of preset+data or option must be present.
+      if (option === undefined && data === undefined && series === undefined) return null
+      return {
+        type: 'echart',
+        ...opt('title', str(v.title, GENUI_LIMITS.maxString)),
+        ...opt('height', int(v.height, 100, 800)),
+        ...opt('preset', enu(v.preset, ECHART_PRESETS)),
+        ...opt('data', data),
+        ...opt('series', series),
+        ...opt('option', option),
       }
     }
     default:
@@ -892,6 +936,84 @@ function repairQuizOptions(v: unknown): Array<{ label: string; correct?: boolean
 }
 
 /**
+ * Patterns that indicate HTML/script injection in a string field. ECharts
+ * default `tooltip.renderMode: 'html'` writes tooltip content via
+ * `innerHTML`; even with renderMode forced to 'richText' (see below),
+ * filtering these patterns is defense-in-depth — a model (or a
+ * prompt-injected model) should never emit `<script>`, `onerror=`, or
+ * `javascript:` inside a chart option string.
+ */
+const ECHART_HTML_DANGER_RE = /<(?:script|img|svg|iframe|video|audio|object|embed|source)\b|on[a-z]+\s*=|javascript:/i
+
+/**
+ * Mutable budget counter for the sanitize walk — passed by reference so
+ * every recursion shares one pool.
+ */
+interface EChartSanitizeBudget { count: number }
+
+/**
+ * Sanitize an ECharts option object: depth-bounded, budget-bounded
+ * pass-through that strips dangerous values (functions, `url()` in styles,
+ * HTML/script injection patterns in strings) but preserves the object shape
+ * ECharts needs. Scalars are KEPT: ECharts options are full of them,
+ * including inside `data` arrays (`data: [120, 150, 180]`,
+ * `xAxis.data: ['1月', '2月']`). Previously a scalar hit the plain-object
+ * gate below and returned undefined, so every primitive-valued array was
+ * filtered to empty and dropped — a chart with a full `option` rendered
+ * with empty series (blank canvas). This is a safety walk, not an ECharts
+ * semantic validator.
+ *
+ * Security: `tooltip.renderMode` is forced to `'richText'` on every tooltip
+ * object. ECharts' default `'html'` mode writes tooltip content via
+ * `innerHTML`, which is an XSS vector when the option originates from model
+ * output — a prompt-injected model could emit
+ * `{"tooltip":{"formatter":"<img src=x onerror=...>"}}` and execute
+ * arbitrary script. `richText` renders as text, never touching innerHTML.
+ */
+function sanitizeEChartOption(v: unknown, depth: number, budget: EChartSanitizeBudget): unknown {
+  if (budget.count <= 0) return undefined
+  budget.count -= 1
+  if (depth > GENUI_LIMITS.maxEChartOptionDepth) return undefined
+  // Scalars pass through: numbers/strings/booleans/null are legal ECharts
+  // values both as object fields and as array elements.
+  if (typeof v === 'string') {
+    const s = v.slice(0, GENUI_LIMITS.maxString)
+    // Reject strings containing HTML/script injection patterns or CSS url()
+    // (exfiltration channel). Preserves legitimate ECharts string values
+    // (labels, plain-text formatter templates, etc.).
+    if (s.toLowerCase().includes('url(') || ECHART_HTML_DANGER_RE.test(s)) return undefined
+    return s
+  }
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'boolean') return v
+  if (v === null) return null
+  if (Array.isArray(v)) {
+    const cap = Math.min(v.length, GENUI_LIMITS.maxEChartArrayLen)
+    const arr: unknown[] = []
+    for (let i = 0; i < cap; i++) {
+      const s = sanitizeEChartOption(v[i], depth + 1, budget)
+      if (s !== undefined) arr.push(s)
+    }
+    return arr.length > 0 ? arr : undefined
+  }
+  const o = obj(v)
+  if (o === undefined) return undefined
+  const out: Record<string, unknown> = {}
+  for (const [key, val] of Object.entries(o)) {
+    const s = sanitizeEChartOption(val, depth + 1, budget)
+    if (s === undefined) continue
+    // Force tooltip.renderMode: 'richText' to prevent ECharts from writing
+    // tooltip content via innerHTML (the default 'html' mode is an XSS
+    // vector when the option comes from model output).
+    if (key === 'tooltip' && typeof s === 'object' && s !== null && !Array.isArray(s)) {
+      (s as Record<string, unknown>).renderMode = 'richText'
+    }
+    out[key] = s
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+/**
  * Deterministically repair a raw spec value into a renderable GenuiSpec.
  * Returns null only when the root is not an object with an `items` array
  * (a bare component root is wrapped into a col first — the documented fence
@@ -1183,6 +1305,12 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       if (typeof v.kind !== 'string') errors.push(`${at}: type 'diagram' requires kind (string)`)
       if (!Array.isArray(v.nodes)) errors.push(`${at}: type 'diagram' requires nodes (array)`)
       if (v.edges !== undefined && !Array.isArray(v.edges)) errors.push(`${at}: type 'diagram' requires edges (array) when present`)
+
+    case 'echart':
+      if (v.option === undefined && v.data === undefined && v.series === undefined) {
+        errors.push(`${at}: type 'echart' requires option, data, or series`)
+      }
+      isNum('height')
       break
     default:
       // Unknown type: plugin-registered custom nodes are valid when a

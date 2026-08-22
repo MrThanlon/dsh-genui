@@ -21,6 +21,8 @@ import {
 } from './advanced.tsx'
 import { DiagramNode } from './diagram/index.tsx'
 
+import { EChartNode } from '../EChartNode.tsx'
+
 /** Custom node data shape (declared locally: pristine hosts export no type). */
 interface GenuiCustomNode {
   type: string
@@ -231,6 +233,8 @@ export function renderNode(
     case 'breadcrumb': return <BreadcrumbNode key={key} node={node} />
     case 'quiz': return <QuizNode key={key} node={node} onAction={onAction} />
     case 'diagram': return <DiagramNode key={key} node={node} />
+
+    case 'echart': return <EChartNode key={key} node={node} />
     default: {
       // Plugin-registered custom types: a plugin ships a renderer through
       // registerGenuiComponent; unregistered unknowns render nothing. The
