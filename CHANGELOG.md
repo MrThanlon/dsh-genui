@@ -28,6 +28,7 @@
 ### 测试
 - 新增 `tests/genui-echart-guard.spec.ts`：preset 白名单、height 100–800、option 深度/数组/节点预算、函数/url()/HTML 过滤、非法节点拒绝。
 - 新增 `tests/genui-echart.spec.tsx`：preset 五种形态渲染容器、error fallback、option 优先于 preset、标题与高度、scatter 中文 label。
+- **guard 容错升级 + validate_dsh_ui 丢弃告警（issue #42）**：table 自愈对象形态（`{title,key}` antd 风格列提取表头、`rows`/`data` 对象数组按列键展平为二维行，非标量单元格字符串化保对齐）；tabs 接受 `content` 作 `items` 别名（数组或单组件）；`countGenuiNodes` 补齐 row/col/grid/card 容器递归（此前计数偏低，掩盖丢弃）；`validate_dsh_ui` 新增声明数 vs 解析数对比（`countDeclaredGenuiNodes` + 白名单过滤，避开 file-tree `{type:'file'}` 误报），声明多于解析时返回 ❌ 并给出丢弃数量与常见原因，不再对半空树绿灯放行。
 
 ## [Unreleased]
 ### 兼容性

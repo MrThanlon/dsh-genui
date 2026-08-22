@@ -1166,7 +1166,7 @@ export const GENUI_NODE_TYPES: ReadonlySet<string> = new Set([
   'checkbox', 'code', 'col', 'copy', 'diff', 'divider', 'file-tree', 'grid', 'input', 'json',
   'keyvalue', 'link', 'list', 'mermaid', 'plot', 'progress', 'quiz', 'radio', 'row', 'scene3d',
   'select', 'slider', 'spacer', 'stat', 'steps', 'submit', 'switch', 'table', 'tabs', 'text',
-  'textarea', 'timeline', 'video', 'echart',
+  'textarea', 'timeline', 'video', 'echart', 'diagram',
 ])
 
 /**
