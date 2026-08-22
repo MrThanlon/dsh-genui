@@ -1,4 +1,5 @@
 import type { GenuiChart, GenuiTable } from '../spec.ts';
+export declare const CHART_COLORS: string[];
 /**
  * Sortable numeric value of a cell. Human-written table cells are rarely
  * plain numbers, so the sort accepts the usual decorations:

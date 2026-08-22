@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.9.0] - 2026-08-17
+### 新增
+- **ECharts 集成组件**：新增 `echart` 节点类型，支持模型输出完整 ECharts 图表。两种模式：
+  - **Preset 简写**（`preset` + `data`/`series`）：与 `chart` 节点同构的数据格式，模型只需改 `type` 为 `echart` 并加 `preset`（`bar`/`line`/`area`/`pie`/`scatter`）即可升级到 ECharts 渲染；
+  - **Full option 逃生舱**（`option` 字段）：直传 ECharts `EChartsCoreOption`，支持 dataZoom、visualMap 等高级特性。
+  - ECharts 引擎按需懒加载（`lib/assets/echarts.js`，~1MB），不进主 client bundle。
+### 安全
+- **full option XSS 防护**：`sanitizeEChartOption` 强制覆盖 `tooltip.renderMode: 'richText'`（ECharts 默认 `'html'` 模式经 `innerHTML` 写入 tooltip，是模型输出的 XSS 向量）；同时过滤所有字符串中的 HTML/脚本注入模式（`<script`、`on[a-z]+=`、`javascript:`、`<img` 等）与 `url()` 外带通道。
+- **full option 资源预算**：新增 `maxEChartArrayLen: 500`（单数组上限）与 `maxEChartOptionNodes: 2000`（总遍历条目预算），防止模型输出几十万数据点卡住渲染。
+### 修复
+- **preset `scatter` 数据映射**：xAxis 从 `type: 'value'`（非数字 label 如「一月」画不出来）改为 `type: 'category'`，data 映射从 `[label, value]` 改为 `value`。
+- **懒加载期间 spec 更新丢失**：update effect 依赖加入 `status`，引擎加载完成（`loading → ready`）时重新应用最新 option，避免流式渲染中 spec 变更被旧 option 覆盖。
+- **preset tooltip `renderMode`**：所有 preset 路径的 tooltip 统一设为 `richText`，与 full option 安全姿态对齐。
+- **preset `series[].color` 对齐**：bar/line/area preset 现在尊重 `series[].color`（与 `chart` 节点行为一致）。
+### 无障碍
+- ECharts 画布容器添加 `role="img"` 与 `aria-label`（与 PlotBlock 对齐）。
+### 可观测性
+- ECharts 渲染失败时 `console.warn` 输出诊断信息（asset 404 / 引擎注册失败 / option 异常），遵循「静默失败必须可观测」约定。
+### 构建
+- `tsdown.config.ts` 的 `assetConfig` 签名放宽为 `'mermaid' | 'three' | 'echarts'`；`asset-loader.ts` 的 `@param` 注释同步三资产。
+- `scripts/verify-pack.mjs` 必查列表新增 `lib/assets/echarts.js`（issue #15 发布规范）。
+### 测试
+- 新增 `tests/genui-echart-guard.spec.ts`：preset 白名单、height 100–800、option 深度/数组/节点预算、函数/url()/HTML 过滤、非法节点拒绝。
+- 新增 `tests/genui-echart.spec.tsx`：preset 五种形态渲染容器、error fallback、option 优先于 preset、标题与高度、scatter 中文 label。
+
 ## [Unreleased]
 ### 兼容性
 - **dsh 0.1.0-rc.8**：对齐全部宿主 peer 依赖并补齐实际使用的 conversation、input-trigger、session 直接声明；改用 ui-tool 的公开客户端入口，测试和构建不再读取本机旧源码快照。`tsc`、`tsdown`、Vitest 全通过（316 passed / 104 skipped，0 失败）。
