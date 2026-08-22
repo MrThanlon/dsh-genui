@@ -3,6 +3,7 @@
 ## [Unreleased]
 ### 兼容性
 - **dsh 0.1.0-rc.8**：对齐全部宿主 peer 依赖并补齐实际使用的 conversation、input-trigger、session 直接声明；改用 ui-tool 的公开客户端入口，测试和构建不再读取本机旧源码快照。`tsc`、`tsdown`、Vitest 全通过（316 passed / 104 skipped，0 失败）。
+- **peer 范围放宽至 0.1.1-rc 系列（PR #41）**：strict semver 下 prerelease 版本仅在范围含相同 `major.minor.patch` 元组的比较子时才匹配，`^0.1.0-rc.8` 因此不满足宿主 `0.1.1-rc.1`（marketplace/健康检查误报 unmet peer）。全部 `@deepseek-ai/dsh-*` peer/dev 范围放宽为 `^0.1.0-rc.8 || >=0.1.1-rc.0 <0.2.0`：保留 rc.8 API 下限、覆盖整个 0.1.1-rc 列车与后续 0.1.x 稳定版、仍排除 0.2.0；pnpm-lock 随新范围重算。
 ### 新增
 - **原生音视频组件（issue #35）**：白名单新增 `audio` / `video`，直接播放工具通过 http(s) 或同源相对地址暴露的媒体；两者固定使用原生控制器且不自动播放，支持循环，视频另支持封面、初始静音和 16:9 / 4:3 / 1:1 / 9:16 比例，加载失败原位提示。危险或本地协议被丢弃，未增加播放器依赖。
 - **视觉 E2E 脚本（无需模型 key）**：新增 `scripts/e2e-visual.mts`——真实 dsh web + link 安装 → DOM 通道注入组件画廊 → headless Chrome 全页截图 + 本地交互（排序/判题/折叠/对齐）硬断言。与 `e2e.mjs`（需要 DEEPSEEK_API_KEY 的模型闭环）互补，样式/组件改动后一条命令做视觉回归。
@@ -23,6 +24,11 @@
 - `install-script.spec.ts` 两个 describe 套件级 timeout 提升到 30s——真实 shell 用例在全量并行时偶发 5s 超时（单跑即过），已消除抖动。
 ### 诊断
 - **客户端激活标记（issue #33）**：两条渲染通道启动时统一打印 `[genui] client active; fence-channel=registry|dom`；文档明确区分“client.js 下载成功”与“客户端入口真正激活”，并列出宿主必须提供的 `slots` / `sessions` 服务和包身份对齐项。
+### 修复
+- **模型输出缺 `graph TD` 声明时 mermaid 直接降级（本地验证）**：chat 助手生成的流程图常省略首行图类型声明（如 `A[高帧率摄像头 120-240fps] --> B[...]`），此前在渲染前就被白名单门禁拒绝 → 组件直接显示「图语法有误，已降级显示源码」。新增纯函数 `ensureFlowchartKind`（mermaid-safe.ts）：首 token 非已声明 `graph`/`flowchart` 且正文含流程图边（`-->`/`==>`/`-.->`，负向前瞻排除时序图 `-->>` 消息）时自动补 `graph TD` 再渲染；已声明种类、时序图/饼图正文、纯文本一律原样放行——不猜类型。`renderMermaid`（mermaid-core.ts）在种类门禁处接入该修复，其它图类型行为不变。
+### 测试
+- 21 → 29（+8 `ensureFlowchartKind`：缺声明补全 / 多行粗线虚线 / 已声明 graph、flowchart 不动 / 时序图 `-->>` 不误判 / pie 等已声明种类不动 / 纯文本不动 / 首尾空白 trim）；全量 296 passed / 104 skipped、0 新增失败（14 项失败为本机 Windows 环境既有项：install-script `chmod` 与 skill-md yaml 版本，基线复现一致，与本次变更无关）。
+- **对象数组 options 归一化为字符串（PR #43）**：模型有时把 \`ask_user_question\` 的 \`{label,description}\` 对象数组格式误用到 select/radio 的 \`options\`——\`repairStrings\` 此前只收字符串、对象元素静默丢弃，radio/select 渲染 0 个选项的空白列表。现在对象元素按 \`label → value → title → JSON.stringify\` 提取可读文本；select/radio options、table columns、submit.groups、breadcrumb items 五处 \`repairStrings\` 调用点同时受益，纯字符串路径不变。
 
 ## [0.8.7] - 2026-08-18
 ### 兼容性
