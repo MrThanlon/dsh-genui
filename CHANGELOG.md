@@ -53,6 +53,7 @@
 - **模型输出缺 `graph TD` 声明时 mermaid 直接降级（本地验证）**：chat 助手生成的流程图常省略首行图类型声明（如 `A[高帧率摄像头 120-240fps] --> B[...]`），此前在渲染前就被白名单门禁拒绝 → 组件直接显示「图语法有误，已降级显示源码」。新增纯函数 `ensureFlowchartKind`（mermaid-safe.ts）：首 token 非已声明 `graph`/`flowchart` 且正文含流程图边（`-->`/`==>`/`-.->`，负向前瞻排除时序图 `-->>` 消息）时自动补 `graph TD` 再渲染；已声明种类、时序图/饼图正文、纯文本一律原样放行——不猜类型。`renderMermaid`（mermaid-core.ts）在种类门禁处接入该修复，其它图类型行为不变。
 ### 测试
 - 21 → 29（+8 `ensureFlowchartKind`：缺声明补全 / 多行粗线虚线 / 已声明 graph、flowchart 不动 / 时序图 `-->>` 不误判 / pie 等已声明种类不动 / 纯文本不动 / 首尾空白 trim）；全量 296 passed / 104 skipped、0 新增失败（14 项失败为本机 Windows 环境既有项：install-script `chmod` 与 skill-md yaml 版本，基线复现一致，与本次变更无关）。
+- **对象数组 options 归一化为字符串（PR #43）**：模型有时把 `ask_user_question` 的 `{label,description}` 对象数组格式误用到 select/radio 的 `options`——`repairStrings` 此前只收字符串、对象元素静默丢弃，radio/select 渲染 0 个选项的空白列表。现在对象元素按 `label → value → title → JSON.stringify` 提取可读文本；select/radio options、table columns、submit.groups、breadcrumb items 五处 `repairStrings` 调用点同时受益，纯字符串路径不变。
 
 ## [0.8.7] - 2026-08-18
 ### 兼容性
