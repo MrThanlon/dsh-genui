@@ -108,6 +108,24 @@ describe('repairGenuiSpec: node-level healing', () => {
     expect((spec?.items[0] as { content: string }).content).toBe('kept')
   })
 
+  it('normalizes object-array options into strings (select/radio)', () => {
+    // Models sometimes reuse ask_user_question's {label,description} shape for
+    // select/radio options; the guard must extract readable text instead of
+    // silently dropping every option (empty list = "options not rendered").
+    const spec = repairGenuiSpec({ items: [
+      { type: 'radio', label: 'Q', group: 'q', options: [
+        { label: '甲方案', description: '说明' },
+        { value: '乙方案' },
+        { title: '丙方案' },
+        { x: 1 },
+      ] },
+      { type: 'select', options: [{ label: '选项A' }, { label: '选项B' }] },
+    ] })
+    const [radio, select] = spec!.items as Array<{ options?: string[] }>
+    expect(radio.options).toEqual(['甲方案', '乙方案', '丙方案', '{"x":1}'])
+    expect(select.options).toEqual(['选项A', '选项B'])
+  })
+
   it('clamps out-of-range numbers', () => {
     const spec = repairGenuiSpec({ items: [
       { type: 'progress', value: 150 },

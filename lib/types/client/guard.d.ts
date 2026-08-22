@@ -60,6 +60,17 @@ export declare const GENUI_LIMITS: {
     readonly maxKeyValuePairs: 24;
     /** Maximum `file-tree` nesting. */
     readonly maxTreeDepth: 6;
+    /** Maximum depth of an `echart` option object (prevents pathological nested
+     * ECharts configs from stalling the guard walk). */
+    readonly maxEChartOptionDepth: 10;
+    /** Maximum length of any single array inside an `echart` option (prevents
+     * a model from stalling rendering with `series.data` of hundreds of
+     * thousands of points). */
+    readonly maxEChartArrayLen: 500;
+    /** Maximum total entries (object keys + array elements) traversed while
+     * sanitizing an `echart` option. Bounds the walk so a pathologically
+     * large option object cannot stall the guard. */
+    readonly maxEChartOptionNodes: 2000;
 };
 /** Result of `validateGenuiSpec`. */
 export interface GenuiValidation {
