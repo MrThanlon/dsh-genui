@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.9.1] - 2026-08-22
+### 新增
+- **编辑级 `diagram` 组件（diagram-design 移植，PR #9）**：白名单新增 `diagram` 节点——27 种 kind（architecture/flowchart/sequence/state/er/timeline/swimlane/quadrant/radar/loop 等）、正交连接器、语义 token 主题（light/dark/editorial 变体）、dotted-paper 底纹、Zone 分组（≤3 个虚线容器 + mono eyebrow 标签）、64px 节点排版与底部 Legend 色板条。复杂度预算由 guard 强制（节点/边/焦点上限），坐标取整 4px 网格、重复 id 自愈、主题色安全校验；`figcaption` 与 SVG `<title>` 分离 id，`aria-labelledby` 稳定指向 `<title>`。
+
 ## [0.9.0] - 2026-08-17
 ### 新增
 - **ECharts 集成组件**：新增 `echart` 节点类型，支持模型输出完整 ECharts 图表。两种模式：

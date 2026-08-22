@@ -18,7 +18,7 @@
  * - The whole spec carries a node budget; once exhausted, remaining siblings
  *   are elided.
  */
-import type { GenuiFileTreeNode, GenuiList, GenuiNode, GenuiPlot, GenuiPlotSeries, GenuiScene3D, GenuiSpec } from './spec.ts'
+import type { GenuiFileTreeNode, GenuiList, GenuiNode, GenuiPlot, GenuiPlotSeries, GenuiScene3D, GenuiSpec, GenuiDiagram, GenuiDiagramTheme, GenuiDiagramKind } from './spec.ts'
 import { wrapSingleComponentRoot } from './spec.ts'
 
 /** Hard resource limits enforced by repair (and mirrored at render time). */
@@ -62,6 +62,14 @@ export const GENUI_LIMITS = {
   maxKeyValuePairs: 24,
   /** Maximum `file-tree` nesting. */
   maxTreeDepth: 6,
+  /** Maximum `diagram` nodes / edges / zones / focal accents (editorial
+   * complexity budget, mirroring diagram-design's §7 limits). */
+  maxDiagramNodes: 9,
+  maxDiagramEdges: 12,
+  maxDiagramZones: 3,
+  maxDiagramFocal: 2,
+  maxDiagramLabel: 14,
+
   /** Maximum depth of an `echart` option object (prevents pathological nested
    * ECharts configs from stalling the guard walk). */
   maxEChartOptionDepth: 10,
@@ -174,6 +182,17 @@ const PLOT_KINDS = ['line', 'area', 'scatter'] as const
 const MEDIA_ASPECT_RATIOS = ['16:9', '4:3', '1:1', '9:16'] as const
 const MESH_SHAPES = ['box', 'sphere', 'cone', 'cylinder', 'torus'] as const
 const FILE_TYPES = ['file', 'dir'] as const
+const DIAGRAM_KINDS: readonly string[] = [
+  'architecture', 'it-state', 'flowchart', 'sequence', 'state', 'er', 'timeline',
+  'swimlane', 'quadrant', 'radar', 'loop', 'nested', 'tree', 'org-chart', 'layers',
+  'venn', 'pyramid', 'bar', 'line', 'gantt', 'scatter', 'high-level', 'process',
+  'medallion', 'data-flow', 'dp-integration', 'dp-security-matrix',
+]
+const DIAGRAM_NODE_TYPES = ['focal', 'backend', 'store', 'external', 'input', 'optional', 'security'] as const
+const DIAGRAM_VARIANTS = ['light', 'dark', 'editorial'] as const
+const DIAGRAM_EDGE_KINDS = ['solid', 'dashed', 'accent', 'link'] as const
+const DIAGRAM_ROUTES = ['auto', 'orthogonal', 'straight'] as const
+
 const ECHART_PRESETS = ['bar', 'line', 'area', 'pie', 'scatter'] as const
 
 /* ---------------- repair ---------------- */
@@ -478,6 +497,10 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       const meshes = repairMeshes(v.meshes)
       if (meshes === undefined) return null
       return { type: 'scene3d', meshes, ...opt('title', str(v.title, GENUI_LIMITS.maxString)), ...opt('ambient', num(v.ambient, 0, 2)), ...opt('background', color(v.background)) }
+    }
+    case 'diagram': {
+      const repaired = repairDiagram(v)
+      return repaired
     }
     case 'timeline': {
       const items = repairTimeline(v.items, GENUI_LIMITS.maxTimelineItems)
@@ -810,6 +833,118 @@ function tuple3(v: unknown): [number, number, number] | undefined {
   if (typeof a !== 'number' || !Number.isFinite(a) || typeof b !== 'number' || !Number.isFinite(b)
     || typeof c !== 'number' || !Number.isFinite(c)) return undefined
   return [Math.min(1e6, Math.max(-1e6, a)), Math.min(1e6, Math.max(-1e6, b)), Math.min(1e6, Math.max(-1e6, c))]
+}
+
+/* ---------------- diagram (editorial) sub-repairers ---------------- */
+
+/** Clamp a coordinate/size to the 4px editorial grid. */
+function grid4(v: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(v / 4) * 4))
+}
+
+function repairDiagramNodes(v: unknown): GenuiDiagram['nodes'] | undefined {
+  if (!Array.isArray(v)) return undefined
+  const out: GenuiDiagram['nodes'] = []
+  const seen = new Set<string>()
+  for (const raw of v) {
+    if (out.length >= GENUI_LIMITS.maxDiagramNodes) break
+    const o = obj(raw)
+    if (o === undefined) continue
+    const id = str(o.id, 128)
+    const label = str(o.label, GENUI_LIMITS.maxString)
+    if (id === undefined || label === undefined) continue
+    if (seen.has(id)) continue
+    seen.add(id)
+    const nodeType = enu(o.type, DIAGRAM_NODE_TYPES)
+    // Coordinate fields are clamped to a sane canvas and rounded to 4px.
+    const x = o.x === undefined ? undefined : grid4(num(o.x, -1e6, 1e6) ?? 0, 0, 1e6)
+    const y = o.y === undefined ? undefined : grid4(num(o.y, -1e6, 1e6) ?? 0, 0, 1e6)
+    const w = o.w === undefined ? undefined : grid4(num(o.w, -1e6, 1e6) ?? 96, 40, 2000)
+    const h = o.h === undefined ? undefined : grid4(num(o.h, -1e6, 1e6) ?? 48, 24, 1200)
+    out.push({
+      id, label,
+      ...opt('sub', str(o.sub, 256)),
+      ...opt('type', nodeType),
+      ...opt('x', x),
+      ...opt('y', y),
+      ...opt('w', w),
+      ...opt('h', h),
+      ...opt('tag', str(o.tag, 32)),
+    })
+  }
+  return out
+}
+
+function repairDiagramEdges(v: unknown): GenuiDiagram['edges'] | undefined {
+  if (v === undefined) return []
+  if (!Array.isArray(v)) return undefined
+  const out: GenuiDiagram['edges'] = []
+  for (const raw of v) {
+    if (out.length >= GENUI_LIMITS.maxDiagramEdges) break
+    const o = obj(raw)
+    if (o === undefined) continue
+    const from = str(o.from, 128)
+    const to = str(o.to, 128)
+    if (from === undefined || to === undefined) continue
+    out.push({
+      from, to,
+      ...opt('label', str(o.label, GENUI_LIMITS.maxDiagramLabel)),
+      ...opt('kind', enu(o.kind, DIAGRAM_EDGE_KINDS)),
+      ...opt('route', enu(o.route, DIAGRAM_ROUTES)),
+    })
+  }
+  return out
+}
+
+function repairDiagramTheme(v: unknown): GenuiDiagramTheme | undefined {
+  const o = obj(v)
+  if (o === undefined) return undefined
+  const out: GenuiDiagramTheme = {}
+  for (const key of ['paper', 'paper-2', 'ink', 'muted', 'soft', 'rule', 'accent', 'accent-tint', 'link'] as const) {
+    const c = color(o[key])
+    if (c !== undefined) out[key] = c
+  }
+  return Object.keys(out).length === 0 ? undefined : out
+}
+
+function repairDiagramZones(v: unknown): GenuiDiagram['zones'] | undefined {
+  if (v === undefined) return []
+  if (!Array.isArray(v)) return undefined
+  const out: GenuiDiagram['zones'] = []
+  for (const raw of v) {
+    if (out.length >= GENUI_LIMITS.maxDiagramZones) break
+    const o = obj(raw)
+    if (o === undefined) continue
+    const label = str(o.label, 64)
+    if (label === undefined) continue
+    out.push({
+      label,
+      ...opt('x', o.x === undefined ? undefined : grid4(num(o.x, -1e6, 1e6) ?? 0, 0, 1e6)),
+      ...opt('y', o.y === undefined ? undefined : grid4(num(o.y, -1e6, 1e6) ?? 0, 0, 1e6)),
+      ...opt('w', o.w === undefined ? undefined : grid4(num(o.w, -1e6, 1e6) ?? 100, 40, 2000)),
+      ...opt('h', o.h === undefined ? undefined : grid4(num(o.h, -1e6, 1e6) ?? 100, 40, 1200)),
+    })
+  }
+  return out
+}
+
+function repairDiagram(v: unknown): GenuiDiagram | null {
+  const o = obj(v)
+  if (o === undefined) return null
+  const kind = enu(o.kind, DIAGRAM_KINDS as unknown as readonly GenuiDiagramKind[])
+  if (kind === undefined) return null
+  const nodes = repairDiagramNodes(o.nodes)
+  if (nodes === undefined) return null
+  const edges = repairDiagramEdges(o.edges)
+  if (edges === undefined) return null
+  const zones = repairDiagramZones(o.zones)
+  if (zones === undefined) return null
+  return {
+    type: 'diagram', kind, nodes, edges, zones,
+    ...opt('variant', enu(o.variant, DIAGRAM_VARIANTS)),
+    ...opt('title', str(o.title, 256)),
+    ...opt('theme', repairDiagramTheme(o.theme)),
+  }
 }
 
 function repairTimeline(v: unknown, cap: number): Array<{ title: string; desc?: string; time?: string }> | undefined {
@@ -1295,6 +1430,12 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       if (typeof v.question !== 'string') errors.push(`${at}: type 'quiz' requires question (string)`)
       if (!Array.isArray(v.options)) errors.push(`${at}: type 'quiz' requires options (array)`)
       break
+    case 'diagram':
+      if (typeof v.kind !== 'string') errors.push(`${at}: type 'diagram' requires kind (string)`)
+      if (!Array.isArray(v.nodes)) errors.push(`${at}: type 'diagram' requires nodes (array)`)
+      if (v.edges !== undefined && !Array.isArray(v.edges)) errors.push(`${at}: type 'diagram' requires edges (array) when present`)
+      break
+
     case 'echart':
       if (v.option === undefined && v.data === undefined && v.series === undefined) {
         errors.push(`${at}: type 'echart' requires option, data, or series`)
