@@ -1305,6 +1305,7 @@ function validateNode(value: unknown, depth: number, at: string, errors: string[
       if (typeof v.kind !== 'string') errors.push(`${at}: type 'diagram' requires kind (string)`)
       if (!Array.isArray(v.nodes)) errors.push(`${at}: type 'diagram' requires nodes (array)`)
       if (v.edges !== undefined && !Array.isArray(v.edges)) errors.push(`${at}: type 'diagram' requires edges (array) when present`)
+      break
 
     case 'echart':
       if (v.option === undefined && v.data === undefined && v.series === undefined) {

@@ -677,6 +677,7 @@ export interface GenuiDiagram {
   zones?: GenuiDiagramZone[]
   /** Optional semantic-token overrides. */
   theme?: GenuiDiagramTheme
+}
 
 /* ---------------- v1.6: ECharts ---------------- */
 
