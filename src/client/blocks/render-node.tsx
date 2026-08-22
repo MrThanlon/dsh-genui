@@ -19,6 +19,8 @@ import {
   AccordionNode, BreadcrumbNode, CalloutNode, CodeNode, CopyNode, DiffNode, FileTreeNode, JsonNode, KeyValueNode,
   MermaidNode, PlotNode, QuizNode, Scene3DNode, StepsNode, TabsNode, TimelineNode,
 } from './advanced.tsx'
+import { DiagramNode } from './diagram/index.tsx'
+
 import { EChartNode } from '../EChartNode.tsx'
 
 /** Custom node data shape (declared locally: pristine hosts export no type). */
@@ -230,6 +232,8 @@ export function renderNode(
     case 'file-tree': return <FileTreeNode key={key} node={node} />
     case 'breadcrumb': return <BreadcrumbNode key={key} node={node} />
     case 'quiz': return <QuizNode key={key} node={node} onAction={onAction} />
+    case 'diagram': return <DiagramNode key={key} node={node} />
+
     case 'echart': return <EChartNode key={key} node={node} />
     default: {
       // Plugin-registered custom types: a plugin ships a renderer through
