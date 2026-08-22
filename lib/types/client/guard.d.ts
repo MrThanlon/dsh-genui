@@ -104,6 +104,18 @@ export declare function repairGenuiSpec(value: unknown): GenuiSpec | null;
  * tree.
  */
 export declare function countGenuiNodes(value: unknown, cap?: number): number;
+/** Every white-listed node `type`. Keep in sync with the repairNode switch —
+ * validate_dsh_ui uses it to tell declared GenUI nodes apart from unrelated
+ * `"type"` strings (e.g. file-tree's `{type:'file'}` children). */
+export declare const GENUI_NODE_TYPES: ReadonlySet<string>;
+/**
+ * Count DECLARED nodes in a raw spec tree: objects whose `type` is a
+ * white-listed string, descending the same containers `countGenuiNodes`
+ * walks. `validate_dsh_ui` compares this with the repaired count to surface
+ * children the repair silently dropped (blank-render class of bugs, issue
+ * #42) instead of reporting a green check on a half-empty tree.
+ */
+export declare function countDeclaredGenuiNodes(value: unknown, cap?: number): number;
 /**
  * Validate a raw spec value against the white list and limits, collecting
  * human-readable problems. Unlike repair this never mutates: it is a

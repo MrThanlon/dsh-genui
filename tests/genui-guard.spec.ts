@@ -2,7 +2,7 @@
 // Pure node tests — no DOM. The fence path runs every body through
 // `repairGenuiSpec` before rendering, so these invariants protect the UI.
 import { describe, expect, it } from 'vitest'
-import { GENUI_LIMITS, countGenuiNodes, repairGenuiSpec, validateGenuiSpec } from '../src/client/guard.ts'
+import { GENUI_LIMITS, countDeclaredGenuiNodes, countGenuiNodes, repairGenuiSpec, validateGenuiSpec } from '../src/client/guard.ts'
 import { type GenuiNode, type GenuiList, isGenuiSpec, parseGenuiSpec } from '../src/client/spec.ts'
 
 const text = (content: string) => ({ type: 'text', content })
@@ -232,6 +232,69 @@ describe('repairGenuiSpec: node-level healing', () => {
     expect(list.items).toEqual(['ok', { title: 't' }])
     const [kv] = spec!.items.slice(1) as Array<{ pairs: Array<{ key: string; value: string }> }>
     expect(kv.pairs).toEqual([{ key: 'k', value: 'v' }])
+  })
+})
+
+describe('repairGenuiSpec: table / tabs tolerance (issue #42)', () => {
+  it('flattens object columns and object-array rows (data alias) into a real table', () => {
+    const spec = repairGenuiSpec({ items: [
+      { type: 'table',
+        columns: [{ title: '名称', key: 'name' }, { title: '数量', dataIndex: 'count' }],
+        data: [
+          { name: '苹果', count: 3, extra: 'x' },
+          { name: '梨', count: null },
+        ] },
+    ] })
+    const table = spec?.items[0] as { columns: string[], rows: Array<Array<string | number>> }
+    expect(table.columns).toEqual(['名称', '数量'])
+    expect(table.rows).toEqual([['苹果', 3], ['梨', '']])
+  })
+
+  it('keys object rows by the first row when columns are plain strings', () => {
+    const spec = repairGenuiSpec({ items: [
+      { type: 'table', columns: ['a', 'b'], rows: [{ a: 1, b: 'two' }] },
+    ] })
+    const table = spec?.items[0] as { rows: Array<Array<string | number>> }
+    expect(table.rows).toEqual([[1, 'two']])
+  })
+
+  it('accepts tabs[].content as an items alias (array or single component)', () => {
+    const spec = repairGenuiSpec({ items: [
+      { type: 'tabs', tabs: [
+        { label: '一', content: [{ type: 'text', content: 'a' }, { type: 'badge', label: 'b' }] },
+        { label: '二', content: { type: 'text', content: 'c' } },
+      ] },
+    ] })
+    const tabs = spec?.items[0] as { tabs: Array<{ label: string, items: unknown[] }> }
+    expect(tabs.tabs[0]?.items).toHaveLength(2)
+    expect(tabs.tabs[1]?.items).toHaveLength(1)
+  })
+})
+
+describe('node counting: container descent + declared nodes (issue #42)', () => {
+  it('countGenuiNodes descends into row / col / grid / card containers', () => {
+    const tree = { items: [
+      { type: 'row', items: [{ type: 'col', items: [text('a'), text('b')] }] },
+      { type: 'grid', cols: 2, items: [text('c')] },
+      { type: 'card', title: 'k', items: [text('d')] },
+    ] }
+    expect(countGenuiNodes(tree)).toBe(8)
+  })
+
+  it('countDeclaredGenuiNodes walks the same containers and skips non-node "type" strings', () => {
+    const tree = { items: [
+      { type: 'row', items: [text('a')] },
+      { type: 'file-tree', items: [
+        { name: 'src', type: 'dir', children: [{ name: 'i.ts', type: 'file' }] },
+      ] },
+    ] }
+    // row + text + the file-tree node itself; the dir/file children are not
+    // GenUI nodes and must not count.
+    expect(countDeclaredGenuiNodes(tree)).toBe(3)
+  })
+
+  it('countDeclaredGenuiNodes counts a single-component root', () => {
+    expect(countDeclaredGenuiNodes({ type: 'callout', content: 'x' })).toBe(1)
   })
 })
 

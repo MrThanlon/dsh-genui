@@ -333,8 +333,24 @@ function repairNode(value: unknown, ctx: RepairCtx, depth: number): GenuiNode | 
       return { type: 'list', items }
     }
     case 'table': {
-      const columns = repairStrings(v.columns, GENUI_LIMITS.maxTableCols, 128)
-      const rows = repairRows(v.rows, GENUI_LIMITS.maxTableRows, GENUI_LIMITS.maxTableCols)
+      let rawCols = v.columns as unknown
+      let rawRows = v.rows !== undefined ? v.rows : (v as Record<string, unknown>).data
+      // Self-heal model-shaped tables: antd-style object columns
+      // ({title,key}) become header strings, and object-array rows (or a
+      // `data` alias) flatten to 2D rows keyed by the column keys — without
+      // this the whole node is dropped for "missing 2D rows" and the user
+      // sees nothing (issue #42).
+      if (Array.isArray(rawCols) && rawCols.length > 0 && typeof rawCols[0] === 'object' && rawCols[0] !== null) {
+        rawCols = rawCols.map(c => columnHeaderText(c))
+      }
+      if (Array.isArray(rawRows) && rawRows.length > 0 && typeof rawRows[0] === 'object' && rawRows[0] !== null && !Array.isArray(rawRows[0])) {
+        const keys = Array.isArray(v.columns) && v.columns.length > 0 && typeof v.columns[0] === 'object' && v.columns[0] !== null
+          ? v.columns.map(c => columnKeyOf(c)).filter((k): k is string => k !== undefined)
+          : Object.keys(rawRows[0] as Record<string, unknown>)
+        rawRows = rawRows.map(row => keys.map(k => cellText((row as Record<string, unknown>)[k])))
+      }
+      const columns = repairStrings(rawCols, GENUI_LIMITS.maxTableCols, 128)
+      const rows = repairRows(rawRows, GENUI_LIMITS.maxTableRows, GENUI_LIMITS.maxTableCols)
       if (columns === undefined || rows === undefined) return null
       return { type: 'table', columns, rows }
     }
@@ -660,9 +676,46 @@ function repairTabs(v: unknown, ctx: RepairCtx, depth: number): Array<{ label: s
     const o = obj(tab)
     const label = o === undefined ? undefined : str(o.label, 128)
     if (label === undefined || o === undefined) continue
-    out.push({ label, items: repairItems(o.items, ctx, depth + 1) })
+    // `content` is accepted as an `items` alias (single component or array) —
+    // models routinely emit tabs[].content and losing it empties every tab.
+    const rawItems = o.items !== undefined ? o.items
+      : o.content !== undefined ? (Array.isArray(o.content) ? o.content : [o.content])
+      : undefined
+    out.push({ label, items: repairItems(rawItems, ctx, depth + 1) })
   }
   return out
+}
+
+/** Header text for an object-shaped table column ({title,key} antd style). */
+function columnHeaderText(c: unknown): string {
+  const o = obj(c)
+  if (o === undefined) return String(c)
+  for (const k of ['title', 'label', 'key', 'dataIndex'] as const) {
+    const s = o[k]
+    if (typeof s === 'string' && s !== '') return s
+  }
+  return JSON.stringify(c)
+}
+
+/** Row key for an object-shaped column, mirroring columnHeaderText's order. */
+function columnKeyOf(c: unknown): string | undefined {
+  const o = obj(c)
+  if (o === undefined) return undefined
+  for (const k of ['key', 'dataIndex', 'title', 'label'] as const) {
+    const s = o[k]
+    if (typeof s === 'string' && s !== '') return s
+  }
+  return undefined
+}
+
+/** Cell text for object-array rows: strings/finite numbers pass through,
+ * everything else stringifies so the column alignment is preserved
+ * (repairRows would drop null/undefined cells and shift the row). */
+function cellText(v: unknown): string | number {
+  if (typeof v === 'string') return v
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (v === null || v === undefined) return ''
+  return JSON.stringify(v)
 }
 
 function repairPlotSeries(v: unknown, cap: number): GenuiPlot['series'] | undefined {
@@ -1083,6 +1136,10 @@ export function countGenuiNodes(value: unknown, cap = Number.POSITIVE_INFINITY):
           const io = obj(it)
           if (io !== undefined) walk(io.items)
         }
+      } else if ((v.type === 'row' || v.type === 'col' || v.type === 'grid' || v.type === 'card') && Array.isArray(v.items)) {
+        // Layout containers hold real children; skipping them undercounted
+        // the tree and hid silent drops from validate_dsh_ui (issue #42).
+        walk(v.items)
       } else if (v.type === 'file-tree' && Array.isArray(v.items)) {
         walk(v.items)
       } else if (v.type === 'list' && Array.isArray(v.items)) {
@@ -1098,6 +1155,66 @@ export function countGenuiNodes(value: unknown, cap = Number.POSITIVE_INFINITY):
   }
   const root = obj(value)
   walk(root === undefined ? [] : root.items)
+  return count
+}
+
+/** Every white-listed node `type`. Keep in sync with the repairNode switch —
+ * validate_dsh_ui uses it to tell declared GenUI nodes apart from unrelated
+ * `"type"` strings (e.g. file-tree's `{type:'file'}` children). */
+export const GENUI_NODE_TYPES: ReadonlySet<string> = new Set([
+  'accordion', 'audio', 'avatar', 'badge', 'breadcrumb', 'button', 'callout', 'card', 'chart',
+  'checkbox', 'code', 'col', 'copy', 'diff', 'divider', 'file-tree', 'grid', 'input', 'json',
+  'keyvalue', 'link', 'list', 'mermaid', 'plot', 'progress', 'quiz', 'radio', 'row', 'scene3d',
+  'select', 'slider', 'spacer', 'stat', 'steps', 'submit', 'switch', 'table', 'tabs', 'text',
+  'textarea', 'timeline', 'video', 'echart', 'diagram',
+])
+
+/**
+ * Count DECLARED nodes in a raw spec tree: objects whose `type` is a
+ * white-listed string, descending the same containers `countGenuiNodes`
+ * walks. `validate_dsh_ui` compares this with the repaired count to surface
+ * children the repair silently dropped (blank-render class of bugs, issue
+ * #42) instead of reporting a green check on a half-empty tree.
+ */
+export function countDeclaredGenuiNodes(value: unknown, cap = Number.POSITIVE_INFINITY): number {
+  let count = 0
+  const declared = (candidate: unknown): boolean => {
+    const o = obj(candidate)
+    return o !== undefined && typeof o.type === 'string' && GENUI_NODE_TYPES.has(o.type)
+  }
+  const walk = (list: unknown): void => {
+    if (!Array.isArray(list)) return
+    for (const item of list) {
+      if (count >= cap) return
+      if (!declared(item)) continue
+      count += 1
+      const v = obj(item)
+      if (v === undefined) continue
+      if (v.type === 'tabs' && Array.isArray(v.tabs)) {
+        for (const t of v.tabs) walkItemsOf(t)
+      } else if (v.type === 'accordion' && Array.isArray(v.items)) {
+        for (const it of v.items) walkItemsOf(it)
+      } else if ((v.type === 'row' || v.type === 'col' || v.type === 'grid' || v.type === 'card') && Array.isArray(v.items)) {
+        walk(v.items)
+      } else if (v.type === 'list' && Array.isArray(v.items)) {
+        for (const li of v.items) {
+          if (declared(li)) walk([li])
+        }
+      }
+    }
+  }
+  const walkItemsOf = (holder: unknown): void => {
+    const o = obj(holder)
+    if (o === undefined) return
+    const items = o.items !== undefined ? o.items : o.content
+    if (Array.isArray(items)) walk(items)
+    else if (declared(items)) walk([items])
+  }
+  const root = obj(value)
+  if (root === undefined) return count
+  // Single-component root (no items array): the root itself is the declared node.
+  if (!Array.isArray(root.items) && declared(value)) walk([value])
+  else walk(root.items)
   return count
 }
 
