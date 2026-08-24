@@ -115,6 +115,17 @@ npm install @changfenhuang/dsh-genui
 
 > ⚠️ **别用 `link:` 装一个刚 clone 的目录**——`link:` 不会安装插件的依赖（mermaid / three / react），装完渲染器会挂。请用上面的 git URL 方式；只有本地开发迭代才用 link:（见下文）。
 
+### 从旧 `@omdsh-dev` 包名迁移
+
+如果你在 v0.9.2 之前安装过插件，请先删除旧依赖，再安装改名后的包：
+
+```sh
+dsh plugin --profile web remove @omdsh-dev/dsh-genui
+dsh plugin --profile web add @changfenhuang/dsh-genui
+```
+
+如果 `dsh web` 仍然启动失败并提到 `@omdsh-dev/dsh-genui`，请只删除 `~/.dsh/profiles/web/cordis.patch.yml` 中使用该旧名字的 `genui` 登记。插件现在会自行提供 `@changfenhuang/dsh-genui` 登记。
+
 ### 60 秒验证安装
 
 命令完成后，重启 dsh web 并对浏览器硬刷新。在**新**会话中输入：
