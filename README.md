@@ -96,7 +96,7 @@ Prerequisites — all required:
 1. **dsh installed** (any open-source build works — the plugin picks its rendering channel at startup, see "dual-channel rendering" above)
 2. **`pnpm` on your PATH**: the `dsh plugin` command depends on it. If missing: `corepack enable` (or `npm i -g pnpm`), then **open a new terminal** and confirm `pnpm -v` prints a version
 
-Install (one command, all dependencies included):
+Install and activate in DSH (one command, all dependencies included):
 
 ```sh
 # Public npm package (works without an npm account)
@@ -104,6 +104,14 @@ dsh plugin --profile web add @changfenhuang/dsh-genui
 # Or install directly from the public GitHub source
 dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-genui.git
 ```
+
+To add it only as a Node dependency in an existing project:
+
+```sh
+npm install @changfenhuang/dsh-genui
+```
+
+> `npm install` only adds the dependency; it does not register the plugin with DSH. Use `dsh plugin add` above when installing it into DSH.
 
 > ⚠️ **Don't use `link:` on a freshly cloned directory** — `link:` does not install the plugin's dependencies (mermaid / three / react), so the renderer will break. Use the git URL form above; reserve `link:` for local development iteration (see below).
 
@@ -207,7 +215,7 @@ The core render package stays light (≈110 KB min / 28 KB gzip); the mermaid, t
 - **Rendering as a code block?** First check the browser console for `[genui] client active; fence-channel=registry|dom`. If absent, the client bundle was not activated even if its URL returns 200 — align the profile dependency, `package.json.name`, `cordis.patch.yml`, ModuleLoader id, and configured bundle name. If present, inspect the fence label/body; registry-less hosts automatically use the DOM channel.
 - **Chat UI goes blank when rendering a dsh-ui fence?** Your dsh is too old — update dsh first, then reinstall the plugin.
 - **`dsh: pnpm not found on PATH`?** Install pnpm, then **open a new terminal** and retry (`corepack enable` or `npm i -g pnpm`).
-- **Stuck on git credentials / 404 during install?** The repo is public (`omdsh-dev/dsh-genui`) — the git URL above needs no login; a 404 for `@changfenhuang/dsh-genui` means the npm package has not been published yet.
+- **Stuck on git credentials / 404 during install?** The repository and npm package are public and require no login. Run `npm view @changfenhuang/dsh-genui version` to verify the package name and public registry; if a newly published version still returns 404, retry shortly or use the GitHub install command above in the meantime.
 - **Installed but scene3d/mermaid/echarts don't render?** The engines (mermaid / three / echarts) are no longer inlined in client.js — they load on demand the first time they're used (`/plugins/@changfenhuang/dsh-genui/assets/*.js`, hosted by the plugin's own HTTP routes). First restart dsh web + hard refresh (Cmd+Shift+R); still broken, remove and reinstall (`dsh plugin --profile web remove @changfenhuang/dsh-genui`, then add again). Hosts without the asset routes degrade to source/load-error hints — update dsh.
 - **Model not outputting fences?** New sessions pick it up after a restart; or just say "output it with dsh-ui".
 - **No lib/ after cloning?** Build it yourself: `pnpm install && pnpm run check`.

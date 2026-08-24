@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.9.2] - 2026-08-24
+### 文档
+- 在中英文 README 中补充原生 `npm install @changfenhuang/dsh-genui` 命令，并明确它只添加 Node 依赖；安装并激活 DSH 插件仍使用 `dsh plugin add`。
+- 修正 npm 包已经公开后仍把 404 解释为“尚未发布”的过时提示；产品站安装命令同步改为 npm 公开包。
+
 ## [0.9.1] - 2026-08-22
 ### 新增
 - **编辑级 `diagram` 组件（diagram-design 移植，PR #9）**：白名单新增 `diagram` 节点——27 种 kind（architecture/flowchart/sequence/state/er/timeline/swimlane/quadrant/radar/loop 等）、正交连接器、语义 token 主题（light/dark/editorial 变体）、dotted-paper 底纹、Zone 分组（≤3 个虚线容器 + mono eyebrow 标签）、64px 节点排版与底部 Legend 色板条。复杂度预算由 guard 强制（节点/边/焦点上限），坐标取整 4px 网格、重复 id 自愈、主题色安全校验；`figcaption` 与 SVG `<title>` 分离 id，`aria-labelledby` 稳定指向 `<title>`。
