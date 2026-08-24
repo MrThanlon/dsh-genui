@@ -150,6 +150,25 @@ describe('live-region confirmations (a11y)', () => {
     }
   })
 
+  it('falls back to execCommand when the async clipboard write is rejected', async () => {
+    const restoreClipboard = mockClipboard({ writeText: vi.fn().mockRejectedValue(new Error('NotAllowedError')) })
+    const originalExec = Object.getOwnPropertyDescriptor(document, 'execCommand')
+    const exec = vi.fn().mockImplementation(() => document.querySelector('textarea')?.value === 'xyz')
+    Object.defineProperty(document, 'execCommand', { configurable: true, value: exec })
+    try {
+      const container = renderBlock([{ type: 'copy', label: '复制', text: 'xyz' }])
+      const button = container.querySelector('button')!
+      fireEvent.click(button)
+      await waitFor(() => expect(button.textContent).toBe('✓ 已复制'))
+      expect(exec).toHaveBeenCalledWith('copy')
+      expect(document.querySelector('textarea')).toBeNull()
+    } finally {
+      restoreClipboard()
+      if (originalExec === undefined) Reflect.deleteProperty(document, 'execCommand')
+      else Object.defineProperty(document, 'execCommand', originalExec)
+    }
+  })
+
   it('does NOT announce success when the clipboard write fails', async () => {
     const restore = mockClipboard({ writeText: vi.fn().mockRejectedValue(new Error('NotAllowedError')) })
     try {
