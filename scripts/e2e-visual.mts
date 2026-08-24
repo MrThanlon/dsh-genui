@@ -119,7 +119,7 @@ try {
   }
   log('dsh web 就绪')
 
-  const clientRes = await fetch(`${BASE}/plugins/@omdsh-dev/dsh-genui/client.js`)
+  const clientRes = await fetch(`${BASE}/plugins/@changfenhuang/dsh-genui/client.js`)
   if (!clientRes.ok) throw new Error(`client.js 返回 ${clientRes.status}`)
   log(`✓ client.js ${clientRes.status}`)
 
