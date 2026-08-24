@@ -5,7 +5,7 @@
  * @module @changfenhuang/dsh-genui/client/blocks/advanced
  */
 import { memo, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
-import { CodeBlock, DiffBlock, JsonTree } from '@deepseek-ai/dsh-client-ui-primitives'
+import { CodeBlock, DiffBlock, JsonTree, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from '../GenuiBlock.module.css'
 import { GENUI_LIMITS } from '../guard.ts'
 import { PlotBlock } from '../PlotBlock.tsx'
@@ -209,6 +209,35 @@ export function AccordionNode({ node, onAction, depth = 0, answers }: {
   )
 }
 
+async function writeCopyText(text: string): Promise<boolean> {
+  /* oxlint-disable-next-line typescript/no-unnecessary-condition */
+  const hasAsyncClipboard = typeof navigator.clipboard?.writeText === 'function'
+  const accepted = await writeClipboard(text)
+  if (accepted || !hasAsyncClipboard) return accepted
+
+  // ponytail: remove this retry once the host helper falls back after Clipboard API rejection.
+  /* oxlint-disable typescript/no-deprecated */
+  const exec = typeof document.execCommand === 'function'
+    ? document.execCommand.bind(document)
+    : undefined
+  if (exec === undefined) return false
+  const el = document.createElement('textarea')
+  el.value = text
+  el.setAttribute('readonly', '')
+  el.style.position = 'fixed'
+  el.style.left = '-9999px'
+  document.body.appendChild(el)
+  el.select()
+  try {
+    return exec('copy')
+  } catch {
+    return false
+  } finally {
+    el.remove()
+  }
+  /* oxlint-enable typescript/no-deprecated */
+}
+
 /** Copy: a one-click copy chip. The live region is a visually-hidden SIBLING
  * (not inside the button) — button content is atomic to screen readers, so a
  * live region inside it would never announce. */
@@ -220,9 +249,12 @@ export const CopyNode = memo(function CopyNode({ node }: { node: GenuiCopy }) {
         type="button"
         className={`${css.copyChip} ${copied ? css.copyChipDone : ''}`}
         onClick={() => {
-          void navigator.clipboard?.writeText(node.text).catch(() => {})
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1500)
+          void writeCopyText(node.text).then((ok) => {
+            if (ok) {
+              setCopied(true)
+              setTimeout(() => setCopied(false), 1500)
+            }
+          })
         }}
       >
         {copied ? '✓ 已复制' : (node.label ?? '复制')}
