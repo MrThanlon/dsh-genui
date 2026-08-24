@@ -96,7 +96,7 @@ https://github.com/user-attachments/assets/f5db33ec-7471-4d4a-a85b-79c9962ab4ef
 1. **dsh 已安装**（开源版任意构建均可——插件启动时自动选择渲染通道，见上文「双通道渲染」）
 2. **`pnpm` 在 PATH 上**：`dsh plugin` 命令依赖它。没有就 `corepack enable`（或 `npm i -g pnpm`），然后**新开一个终端**，确认 `pnpm -v` 有输出
 
-安装（一行命令，自动带上全部依赖）：
+安装并在 DSH 中激活（一行命令，自动带上全部依赖）：
 
 ```sh
 # npm 公开包安装（无需 npm 账号）
@@ -104,6 +104,14 @@ dsh plugin --profile web add @changfenhuang/dsh-genui
 # 也可以直接从 GitHub 公开源码安装
 dsh plugin --profile web add git+https://github.com/omdsh-dev/dsh-genui.git
 ```
+
+如果只想把它作为 Node 依赖加入现有项目：
+
+```sh
+npm install @changfenhuang/dsh-genui
+```
+
+> `npm install` 只添加依赖，不会把插件注册到 DSH；在 DSH 中使用时仍应执行上面的 `dsh plugin add`。
 
 > ⚠️ **别用 `link:` 装一个刚 clone 的目录**——`link:` 不会安装插件的依赖（mermaid / three / react），装完渲染器会挂。请用上面的 git URL 方式；只有本地开发迭代才用 link:（见下文）。
 
@@ -207,7 +215,7 @@ dsh plugin --profile web add link:$PWD
 - **显示成代码块？** 先在浏览器控制台找 `[genui] client active; fence-channel=registry|dom`。没有这行，即使 `client.js` 返回 200，也只是下载了文件、没有激活：请对齐网页配置依赖名、`package.json.name`、`cordis.patch.yml`、ModuleLoader id 和配置中的 bundle 名。出现这行后再查围栏标签/正文；宿主没有 registry 时会自动走 DOM 通道。
 - **渲染 dsh-ui fence 时聊天界面白屏？** dsh 版本太旧——先更新 dsh 再重装插件。
 - **`dsh: pnpm not found on PATH`？** 装 pnpm 后**新开终端**再试（`corepack enable` 或 `npm i -g pnpm`）。
-- **安装时卡在 git 凭据/404？** 仓库是公开的（`omdsh-dev/dsh-genui`），上面的 git URL 无需登录；`@changfenhuang/dsh-genui` 返回 404，表示 npm 包尚未发布。
+- **安装时卡在 git 凭据/404？** 仓库和 npm 包都是公开的，无需登录。先执行 `npm view @changfenhuang/dsh-genui version` 核对包名与公共仓库；若 npm 新版本刚发布仍返回 404，稍后重试，或暂时使用上面的 GitHub 安装命令。
 - **装了但 scene3d/mermaid/echarts 不渲染？** 引擎（mermaid / three / echarts）不再内联进 client.js——它们在首次用到时按需加载（`/plugins/@changfenhuang/dsh-genui/assets/*.js`，插件自带 HTTP 路由托管）。先重启 dsh web + 硬刷新（Cmd+Shift+R）；仍不渲染就卸掉重装（`dsh plugin --profile web remove @changfenhuang/dsh-genui` 后再 add）。旧版宿主缺少资产路由时会降级显示源码/加载失败提示，更新 dsh 即可。
 - **模型不主动输出？** 重启后新会话生效；或直接说"用 dsh-ui 输出"。
 - **clone 后没有 lib/？** `pnpm install && pnpm run check` 自己构建。
