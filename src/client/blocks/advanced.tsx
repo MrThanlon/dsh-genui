@@ -5,7 +5,7 @@
  * @module @changfenhuang/dsh-genui/client/blocks/advanced
  */
 import { memo, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
-import { CodeBlock, DiffBlock, JsonTree } from '@deepseek-ai/dsh-client-ui-primitives'
+import { CodeBlock, DiffBlock, JsonTree, writeClipboard } from '@deepseek-ai/dsh-client-ui-primitives'
 import css from '../GenuiBlock.module.css'
 import { GENUI_LIMITS } from '../guard.ts'
 import { PlotBlock } from '../PlotBlock.tsx'
@@ -220,9 +220,12 @@ export const CopyNode = memo(function CopyNode({ node }: { node: GenuiCopy }) {
         type="button"
         className={`${css.copyChip} ${copied ? css.copyChipDone : ''}`}
         onClick={() => {
-          void navigator.clipboard?.writeText(node.text).catch(() => {})
-          setCopied(true)
-          setTimeout(() => setCopied(false), 1500)
+          void writeClipboard(node.text).then((ok) => {
+            if (ok) {
+              setCopied(true)
+              setTimeout(() => setCopied(false), 1500)
+            }
+          })
         }}
       >
         {copied ? '✓ 已复制' : (node.label ?? '复制')}
