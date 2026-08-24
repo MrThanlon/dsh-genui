@@ -31,6 +31,9 @@
 - **guard 容错升级 + validate_dsh_ui 丢弃告警（issue #42）**：table 自愈对象形态（`{title,key}` antd 风格列提取表头、`rows`/`data` 对象数组按列键展平为二维行，非标量单元格字符串化保对齐）；tabs 接受 `content` 作 `items` 别名（数组或单组件）；`countGenuiNodes` 补齐 row/col/grid/card 容器递归（此前计数偏低，掩盖丢弃）；`validate_dsh_ui` 新增声明数 vs 解析数对比（`countDeclaredGenuiNodes` + 白名单过滤，避开 file-tree `{type:'file'}` 误报），声明多于解析时返回 ❌ 并给出丢弃数量与常见原因，不再对半空树绿灯放行。
 
 ## [Unreleased]
+### 发布
+- npm 发布作用域改为个人账号 `@changfenhuang/dsh-genui`；GitHub 仓库继续保留在 `omdsh-dev` 组织。同步更新运行时模块标识、资源路由、安装脚本、文档和测试，不保留旧 npm 名称兼容层。
+
 ### 兼容性
 - **dsh 0.1.0-rc.8**：对齐全部宿主 peer 依赖并补齐实际使用的 conversation、input-trigger、session 直接声明；改用 ui-tool 的公开客户端入口，测试和构建不再读取本机旧源码快照。`tsc`、`tsdown`、Vitest 全通过（316 passed / 104 skipped，0 失败）。
 - **peer 范围放宽至 0.1.1-rc 系列（PR #41）**：strict semver 下 prerelease 版本仅在范围含相同 `major.minor.patch` 元组的比较子时才匹配，`^0.1.0-rc.8` 因此不满足宿主 `0.1.1-rc.1`（marketplace/健康检查误报 unmet peer）。全部 `@deepseek-ai/dsh-*` peer/dev 范围放宽为 `^0.1.0-rc.8 || >=0.1.1-rc.0 <0.2.0`：保留 rc.8 API 下限、覆盖整个 0.1.1-rc 列车与后续 0.1.x 稳定版、仍排除 0.2.0；pnpm-lock 随新范围重算。
