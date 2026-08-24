@@ -115,6 +115,17 @@ npm install @changfenhuang/dsh-genui
 
 > ⚠️ **Don't use `link:` on a freshly cloned directory** — `link:` does not install the plugin's dependencies (mermaid / three / react), so the renderer will break. Use the git URL form above; reserve `link:` for local development iteration (see below).
 
+### Migrating from the old `@omdsh-dev` package name
+
+If you installed the plugin before v0.9.2, remove the old dependency before installing the renamed package:
+
+```sh
+dsh plugin --profile web remove @omdsh-dev/dsh-genui
+dsh plugin --profile web add @changfenhuang/dsh-genui
+```
+
+If `dsh web` still fails and mentions `@omdsh-dev/dsh-genui`, remove only the stale `genui` entry that uses that old name from `~/.dsh/profiles/web/cordis.patch.yml`. The plugin now supplies the `@changfenhuang/dsh-genui` entry itself.
+
 ### Verify the install in 60 seconds
 
 After the command completes, restart dsh web and hard-refresh the browser. In a **new** session, say:
