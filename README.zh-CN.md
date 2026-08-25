@@ -117,14 +117,14 @@ npm install @changfenhuang/dsh-genui
 
 ### 从旧 `@omdsh-dev` 包名迁移
 
-如果你在 v0.9.2 之前安装过插件，请先删除旧依赖，再安装改名后的包：
+如果你在 v0.9.2 之前通过 `github:omdsh-dev/dsh-genui` 安装过，pnpm 可能仍把依赖保存在旧的 `@omdsh-dev/dsh-genui` 键下，但仓库当前声明的包名已经是 `@changfenhuang/dsh-genui`。加载器按 profile 的依赖键解析插件，后续重装时就可能报 `Cannot find package '@changfenhuang/dsh-genui'`。请用当前包名重新添加一次：
 
 ```sh
 dsh plugin --profile web remove @omdsh-dev/dsh-genui
 dsh plugin --profile web add @changfenhuang/dsh-genui
 ```
 
-如果 `dsh web` 仍然启动失败并提到 `@omdsh-dev/dsh-genui`，请只删除 `~/.dsh/profiles/web/cordis.patch.yml` 中使用该旧名字的 `genui` 登记。插件现在会自行提供 `@changfenhuang/dsh-genui` 登记。
+这次迁移只针对改名前留下的 GitHub 源安装。此后使用上面的 npm 或 GitHub 命令新装，都会采用当前依赖键。
 
 ### 60 秒验证安装
 
