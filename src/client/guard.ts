@@ -997,6 +997,11 @@ function repairQuizOptions(v: unknown, answer?: unknown): Array<{ label: string;
       ...opt('feedback', o === undefined ? undefined : str(o.feedback, GENUI_LIMITS.maxString)),
     })
   }
+  // Nothing recoverable (empty array, all-non-string non-object items): return
+  // undefined rather than an empty list, so repairNode drops the whole quiz
+  // instead of half-rendering a question with no options — the same
+  // silently-unusable state the string-options case produces when kept.
+  if (out.length === 0) return undefined
 
   // The canonical quiz shape stores correctness on each option. Models
   // commonly emit the simpler { options: string[], answer } form; only
