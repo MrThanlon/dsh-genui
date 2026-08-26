@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.3] - 2026-08-27
+### 发布
+- **首次经 GitHub Actions 自动发布到 npm（issue #59，PR #61）**：新增 `.github/workflows/release.yml`——GitHub Release 发布时以 OIDC Trusted Publishing 构建并推送 npm（无需仓库内存放 NPM_TOKEN），tag 与 `package.json` 版本强校验，发布前完整执行 `pnpm run check` + verify-pack + lib 一致性门禁；含防回退保护：目标版本低于已发布 `latest` 时拒绝发布。DSH Desktop 插件市场从此可直接安装/更新精确版本。
+
+### 修复
+- **quiz 字符串选项兼容（PR #60）**：选项为字符串时按文本判定 answer；无法恢复出合法选项的 quiz 节点整体丢弃而非渲染残缺 UI。
+- **表格入场动画闪屏修复（PR #56）**：reveal 动画结束后释放 transform，悬停高亮不再触发整卡重绘闪烁。
+- **plot 滚轮缩放不再穿透（PR #64）**：绘图区滚轮缩放时锁定事件，外层对话框不再跟随滚动。
+- **窄卡片评分布局（PR #65）**：判题行纵向堆叠，答案在窄卡片中保持可读。
+- **copy 芯片剪贴板回退（PR #51）**：剪贴板写入被拒后重试回退通道，仅真实写入成功才播报「已复制」。
+
 ## [0.9.2] - 2026-08-24
 ### 文档
 - 在中英文 README 中补充原生 `npm install @changfenhuang/dsh-genui` 命令，并明确它只添加 Node 依赖；安装并激活 DSH 插件仍使用 `dsh plugin add`。
