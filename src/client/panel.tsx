@@ -31,6 +31,7 @@ import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { GenuiBlock } from './GenuiBlock.tsx'
 import { ErrorBoundary } from './ErrorBoundary.tsx'
 import { panelStateKey } from './interaction-store.ts'
+import { TemplateDrawer } from './TemplateDrawer.tsx'
 import { clearSessionPanel, getPanelExpandToken, getPanelSpec, setLocalPanel, subscribePanel, subscribePanelExpand } from './panel-store.ts'
 import css from './GenuiBlock.module.css'
 
@@ -38,10 +39,20 @@ import css from './GenuiBlock.module.css'
 const PANEL_HEIGHT_MIN = 120
 const PANEL_HEIGHT_MAX = 600
 
+/** First-panel hint dismissal flag (module-level localStorage key):
+ *  shown once beside the first rendered spec, never again. */
+const ONBOARD_KEY = 'dsh.genui.panel-hint'
+
+// Achievement telemetry re-exports (already injected at apply).
+import { recordPanel, recordTemplateUse } from './achievement-store.ts'
+
 /** Injection face built per session in apply (scoped conversation send). */
 export interface GenuiPanelInjected {
   sessionId: string
   sendGenuiAction: GenuiActionHandler
+  /** Template center "try it": insert the template instruction into the
+   *  current composer draft (standard conversation.input.for channel). */
+  insertTemplate: (text: string) => void
 }
 
 export type GenuiPanelProps = PropsRuntime<'conversation.input.dock'> & GenuiPanelInjected
@@ -52,7 +63,7 @@ export type GenuiPanelProps = PropsRuntime<'conversation.input.dock'> & GenuiPan
  * default so the dock never steals the message flow's scroll room; the
  * header always shows the current panel title.
  */
-export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
+export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: GenuiPanelProps) {
   const spec = useSyncExternalStore(subscribePanel, () => getPanelSpec(sessionId))
   const expandToken = useSyncExternalStore(subscribePanelExpand, () => getPanelExpandToken(sessionId))
   const [collapsed, setCollapsed] = useState(true)
@@ -61,6 +72,39 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
   const [resizing, setResizing] = useState(false)
   const dragStart = useRef<{ y: number; height: number } | null>(null)
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  // Template center (0.9.4) + achievements (0.9.5): the drawer host —
+  // null = closed, 'templates' | 'achievements' = open on that tab.
+  const [drawer, setDrawer] = useState<null | 'templates' | 'achievements'>(null)
+  const [flash, setFlash] = useState<string | null>(null)
+  const flashTimer = useRef(0)
+  const hasSpec = spec !== null && spec.items.length > 0
+  // First-panel hint: shown once beside the first rendered spec (never on the
+  // hero — the host composer hero flex-compresses dock items with no content,
+  // and the template button is a permanent header entry anyway).
+  const [hint, setHint] = useState<boolean>(() => {
+    try {
+      return hasSpec && localStorage.getItem(ONBOARD_KEY) !== '1'
+    } catch {
+      return hasSpec
+    }
+  })
+  useEffect(() => {
+    if (!hint) return
+    const t = window.setTimeout(() => {
+      try {
+        localStorage.setItem(ONBOARD_KEY, '1')
+      } catch {
+        // Private-mode storage failures are non-fatal: the hint may reappear.
+      }
+      setHint(false)
+    }, 6000)
+    return () => window.clearTimeout(t)
+  }, [hint])
+  // Achievement telemetry (0.9.5): one panel appearance per dock mount.
+  useEffect(() => {
+    if (!hasSpec) return
+    recordPanel()
+  }, [hasSpec])
 
   // Explicit expand requests (the /panel command) open the dock even when the
   // user collapsed it manually: the monotone token guarantees a fresh request
@@ -89,6 +133,9 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
       dragStart.current = null
     }
   }, [resizing])
+
+  // Template-center flash timer must not outlive the dock.
+  useEffect(() => () => window.clearTimeout(flashTimer.current), [])
 
   /** Start a vertical resize drag on the panel's top edge. Dragging UP grows
    * the panel (the edge moves toward the message flow); dragging down shrinks
@@ -127,7 +174,14 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
     handle.addEventListener('pointercancel', onUp)
   }, [bodyHeight])
 
-  if (spec === null || spec.items.length === 0) return null
+  if (!hasSpec) return null
+
+  const showFlash = (text: string): void => {
+    setFlash(text)
+    window.clearTimeout(flashTimer.current)
+    flashTimer.current = window.setTimeout(() => setFlash(null), 2500)
+  }
+
   return (
     <div className={css.panel} data-genui-panel>
       {/* Resize grip on the panel's TOP EDGE (above the header): the drag
@@ -150,11 +204,33 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
           onClick={() => setCollapsed(c => !c)}
         >
           <span className={css.panelBadge}>面板</span>
-          <span className={css.panelTitle}>{spec.title ?? 'GenUI 面板'}</span>
+          <span className={css.panelTitle}>{spec?.title ?? (drawer !== null ? 'GenUI 探索' : 'GenUI 面板')}</span>
           <span className={css.panelChevron} aria-hidden>
             {/* Host-style glyphs (same icon set as the TodoDock header) instead of typed arrows. */}
             {collapsed ? <IconChevronUpOutline14 /> : <IconChevronDownOutline14 />}
           </span>
+        </button>
+        {/* Template center (0.9.4): one button — the discovery surface for
+            new users and a quick-start entry for everyone. */}
+        <button
+          type="button"
+          className={`${css.panelTpl}${drawer === 'templates' ? ` ${css.panelTplActive}` : ''}`}
+          aria-label="模板中心"
+          title="模板中心：预览并试用 GenUI 示例"
+          onClick={() => { setCollapsed(false); setDrawer(d => (d === 'templates' ? null : 'templates')) }}
+        >
+          模板
+        </button>
+        {/* Achievements (0.9.5): the exploration trophies, rendered by GenUI
+            itself (dogfooding). */}
+        <button
+          type="button"
+          className={`${css.panelTpl}${drawer === 'achievements' ? ` ${css.panelTplActive}` : ''}`}
+          aria-label="探索成就"
+          title="探索成就：解锁徽章与进度"
+          onClick={() => { setCollapsed(false); setDrawer(d => (d === 'achievements' ? null : 'achievements')) }}
+        >
+          成就
         </button>
         {/* In-place dismiss (issue #23): the same local override `/panel
             clear` applies — persists to localStorage, notifies subscribers,
@@ -169,6 +245,11 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
           <span aria-hidden>✕</span>
         </button>
       </div>
+      {hint && drawer === null && (
+        <div className={css.panelHint} role="status">
+          💡 这是 GenUI 会话面板：点右上角「模板」可浏览并试用示例
+        </div>
+      )}
       {!collapsed && (
         <div
           ref={bodyRef}
@@ -176,13 +257,27 @@ export function GenuiPanel({ sessionId, sendGenuiAction }: GenuiPanelProps) {
           data-genui-panel-body
           style={bodyHeight === null ? undefined : { height: bodyHeight }}
         >
-          <GenuiActionContext.Provider value={sendGenuiAction}>
-            <ErrorBoundary label="面板">
-              {/* content-fingerprinted: same panel spec re-published restores its state */}
-              <GenuiBlock spec={spec} stateKey={panelStateKey(sessionId, JSON.stringify(spec))} />
-            </ErrorBoundary>
-          </GenuiActionContext.Provider>
+          {drawer !== null ? (
+            <TemplateDrawer
+              tab={drawer}
+              onUse={(text) => {
+                recordTemplateUse()
+                insertTemplate(text)
+                showFlash('指令已插入输入框，发送即可让模型生成')
+              }}
+            />
+          ) : spec !== null ? (
+            <GenuiActionContext.Provider value={sendGenuiAction}>
+              <ErrorBoundary label="面板">
+                {/* content-fingerprinted: same panel spec re-published restores its state */}
+                <GenuiBlock spec={spec} stateKey={panelStateKey(sessionId, JSON.stringify(spec))} />
+              </ErrorBoundary>
+            </GenuiActionContext.Provider>
+          ) : null}
         </div>
+      )}
+      {flash !== null && (
+        <div className={css.panelFlash} role="status">{flash}</div>
       )}
     </div>
   )

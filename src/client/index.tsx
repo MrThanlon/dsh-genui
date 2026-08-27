@@ -32,6 +32,7 @@ import { renderGenuiFence, type GenuiFenceContext } from './fence-render.tsx'
 import { createPanelSlashSource } from './panel-command.ts'
 import { GenuiPanel, type GenuiPanelInjected } from './panel.tsx'
 import { GenuiToolView } from './toolview.tsx'
+import { mountAchievementToasts } from './achievement-toast.tsx'
 import type { InputTriggerServiceContract } from '@deepseek-ai/dsh-client-ui-input-trigger/client'
 import { assetUrl } from './asset-loader.ts'
 
@@ -76,6 +77,16 @@ function panelActionSend(ctx: Context, sessionId: SessionId): GenuiPanelInjected
         // message may contain field content).
         console.warn(`[genui] 面板动作 "${action}" 发送失败（session ${sessionId}）：`, err instanceof Error ? err.message : String(err))
       })
+    },
+    insertTemplate: (text) => {
+      // Same insert channel as dsh-memory's organizeMemory: the standard
+      // conversation.input.for(scope).setDraft — templates land in the
+      // composer draft, not a queued message, so the user can edit before
+      // sending.
+      const input = (conversation as unknown as {
+        input?: { for?(actx: unknown): { setDraft(text: string): void } | undefined }
+      } | undefined)?.input?.for?.(scoped)
+      input?.setDraft(text)
     },
   }
 }
@@ -130,6 +141,8 @@ export function apply(ctx: Context): () => void {
   // a session usually hits a warm cache instead of paying the fetch on first
   // use. Never blocks first paint; the loader still handles a miss.
   prefetchGenuiAssets()
+  // Achievement toasts (0.9.5): a body-level stack independent of the panel.
+  disposers.push(mountAchievementToasts())
   // Keyed toolview: the harness dispatches 'tool.call.toolview' by wire tool
   // name; registering under 'render_ui' gives the tool's result card the
   // GenUI renderer (reading the repaired spec from result meta). The toolview

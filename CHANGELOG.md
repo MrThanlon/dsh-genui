@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.9.5] - 未发布
+### 新增
+- **探索成就（PR #66）**：12 个本地成就（从「初次相见」到隐藏传说「蓝图之魂」），面板 header「成就」按钮打开成就页（由 `dsh-ui` spec 自渲染，dogfooding）。埋点只统计使用事件计数（fence 渲染/交互回传/面板出现/模板试用），去重指纹以哈希形式存储，**localStorage 绝不保存消息或界面内容**；解锁时右下角 toast 提示（3.6s 自动消退），隐藏成就在解锁前显示「？」。
+
+## [0.9.4] - 未发布
+### 新增
+- **GenUI 模板中心（PR #66，新手引导）**：面板 header 新增「模板」按钮，打开分类模板抽屉（11 个示例：仪表盘/对比表/引导步骤/测验/趋势图/标签页/清单/FAQ/架构图/3D 场景/文件树）。每个模板支持内嵌实时预览（demo spec 由 GenUI 自身渲染）、「试用」（把自然语言指令插入 composer 草稿，走 `conversation.input.for` 标准通道）与「复制指令」；首次出现面板内容时显示一次性 6 秒提示（localStorage 幂等）。
+
 ## [0.9.3] - 2026-08-27
 ### 发布
 - **首次经 GitHub Actions 自动发布到 npm（issue #59，PR #61）**：新增 `.github/workflows/release.yml`——GitHub Release 发布时以 OIDC Trusted Publishing 构建并推送 npm（无需仓库内存放 NPM_TOKEN），tag 与 `package.json` 版本强校验，发布前完整执行 `pnpm run check` + verify-pack + lib 一致性门禁；含防回退保护：目标版本低于已发布 `latest` 时拒绝发布。DSH Desktop 插件市场从此可直接安装/更新精确版本。
