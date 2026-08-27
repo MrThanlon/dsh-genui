@@ -25,6 +25,7 @@
  */
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type {} from '@deepseek-ai/dsh-client-runtime/client'
+import { IconChevronDownOutline14, IconChevronUpOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { GenuiActionContext, type GenuiActionHandler } from './action-context.ts'
 import type { PropsRuntime } from '@deepseek-ai/dsh-client-ui-slots'
 import { GenuiBlock } from './GenuiBlock.tsx'
@@ -204,7 +205,10 @@ export function GenuiPanel({ sessionId, sendGenuiAction, insertTemplate }: Genui
         >
           <span className={css.panelBadge}>面板</span>
           <span className={css.panelTitle}>{spec?.title ?? (drawer !== null ? 'GenUI 探索' : 'GenUI 面板')}</span>
-          <span className={css.panelChevron} aria-hidden>{collapsed ? '▸' : '▾'}</span>
+          <span className={css.panelChevron} aria-hidden>
+            {/* Host-style glyphs (same icon set as the TodoDock header) instead of typed arrows. */}
+            {collapsed ? <IconChevronUpOutline14 /> : <IconChevronDownOutline14 />}
+          </span>
         </button>
         {/* Template center (0.9.4): one button — the discovery surface for
             new users and a quick-start entry for everyone. */}
