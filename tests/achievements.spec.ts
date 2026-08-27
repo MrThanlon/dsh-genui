@@ -69,6 +69,16 @@ describe('埋点与持久化', () => {
     expect(saved).toBeTruthy()
   })
 
+  it('去重指纹不落盘 spec 原文（隐私：localStorage 绝不含内容）', () => {
+    const marker = 'PRIVACY-MARKER-9f2c'
+    recordFence({ title: 't', items: [{ type: 'text', content: marker }] })
+    const seen = localStorage.getItem('dsh.genui.achievements.seen') ?? ''
+    const state = localStorage.getItem('dsh.genui.achievements') ?? ''
+    expect(seen).not.toContain(marker)
+    expect(state).not.toContain(marker)
+    expect(seen).toBeTruthy()
+  })
+
   it('交互/面板/模板埋点', () => {
     recordInteraction()
     recordPanel()

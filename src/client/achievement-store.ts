@@ -80,9 +80,24 @@ function applyDelta(patch: Partial<AchieveState>): void {
   emit()
 }
 
+/** 53-bit string hash (cyrb53-style): dedupe fingerprints are stored as
+ *  hashes, never as the serialized spec itself — localStorage must not
+ *  persist conversation-derived content (table rows, text, …). */
+function fingerprintOf(spec: GenuiSpec): string {
+  const s = JSON.stringify(spec)
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let i = 0; i < s.length; i++) {
+    const ch = s.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  return `${(h1 >>> 0).toString(36)}-${(h2 >>> 0).toString(36)}`
+}
+
 /** 记录一次「内容不重复」的 fence 渲染。 */
 export function recordFence(spec: GenuiSpec): void {
-  const fingerprint = JSON.stringify(spec)
+  const fingerprint = fingerprintOf(spec)
   const seen = readSeen()
   if (seen.includes(fingerprint)) return
   writeSeen([fingerprint, ...seen])
