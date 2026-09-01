@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { Context, Service } from '@deepseek-ai/cordis'
 import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
 import * as GenUI from '../src/plugin/index.ts'
 
@@ -38,6 +38,9 @@ describe('genui:fence section', () => {
     for (const type of ['text', 'card', 'grid', 'stat', 'table', 'audio', 'video', 'chart', 'tabs', 'button', 'progress', 'plot', 'callout', 'steps', 'diff', 'mermaid', 'scene3d']) {
       expect(text).toContain(type)
     }
+    expect(text).toContain('"kind":"bars|line|donut"')
+    expect(text).toContain('"label":"...","value":n')
+    expect(text).toContain('series 仅 bars')
   })
 
   it('keeps the full type whitelist in the slim section within the token budget', async () => {
@@ -89,6 +92,56 @@ describe('genui:fence section', () => {
     expect(registered).toHaveLength(2)
     const names = registered.map(t => (t as { name: string }).name).sort()
     expect(names).toEqual(['render_ui', 'validate_dsh_ui'])
+  })
+
+  it('registers genui as a real bundled provider when the skill service binds after the plugin', async () => {
+    const ctx = new Context()
+    await ctx.plugin(SystemPrompt)
+    type Candidate = Record<string, unknown>
+    type Provider = {
+      name: string
+      list(): Promise<Candidate[]>
+      get(candidate: Candidate): Promise<Record<string, unknown>>
+    }
+    const registered: Provider[] = []
+    class TestSkillRegistry extends Service {
+      constructor(inner: Context) { super(inner, 'skills') }
+
+      registerProvider(create: () => Provider): () => void {
+        const provider = create()
+        return this.ctx.effect(() => {
+          registered.push(provider)
+          return () => {
+            const index = registered.indexOf(provider)
+            if (index >= 0) registered.splice(index, 1)
+          }
+        }, 'test bundled skill provider registration')
+      }
+    }
+    const genui = await ctx.plugin(GenUI)
+    await ctx.plugin(TestSkillRegistry)
+    expect(registered).toHaveLength(1)
+    const provider = registered[0]!
+    expect(provider.name).toBe('dsh-genui')
+    const candidates = await provider.list()
+    expect(candidates).toHaveLength(1)
+    expect(candidates[0]).toMatchObject({
+      name: 'genui',
+      provider: 'dsh-genui',
+      source: 'bundled',
+      rank: 600,
+    })
+    const skill = await provider.get(candidates[0]!)
+    expect(skill).toMatchObject({
+      name: 'genui',
+      provider: 'dsh-genui',
+      source: 'bundled',
+    })
+    expect(String(skill.description)).toContain('完整组件与字段规范')
+    expect(String(skill.content)).toContain('chart:')
+    expect(String(skill.content)).not.toContain('name: genui')
+    await genui.dispose()
+    expect(registered).toHaveLength(0)
   })
 
   it('keeps the fence channel without a tools service', async () => {
