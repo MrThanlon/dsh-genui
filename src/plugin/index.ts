@@ -13,6 +13,7 @@
 import { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-system-prompt'
 import type {} from '@deepseek-ai/dsh-tools'
+import type { SkillProvider } from '@deepseek-ai/dsh-skill'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { readFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
@@ -129,34 +130,8 @@ const BUNDLED_SKILL_PROVIDER = 'dsh-genui'
 const BUNDLED_SKILL_DESCRIPTION = 'GenUI 完整组件与字段规范，用于生成 dsh-ui 结构化交互界面。'
 const BUNDLED_SKILL_INVOCATION = { modelInvocable: true, userInvocable: true } as const
 
-type BundledSkill = {
-  name: string
-  description: string
-  invocation: typeof BUNDLED_SKILL_INVOCATION
-  source: 'bundled'
-  provider: string
-  path: string
-  resourceBase: { kind: 'directory'; path: string }
-  content: string
-}
-
-type BundledSkillCandidate = Omit<BundledSkill, 'content'> & {
-  rank: number
-  locator: string
-}
-
-type BundledSkillProvider = {
-  name: string
-  list(): Promise<BundledSkillCandidate[]>
-  get(candidate: BundledSkillCandidate): Promise<BundledSkill>
-}
-
-type SkillRegistry = {
-  registerProvider(create: () => BundledSkillProvider): () => void
-}
-
-/** Resolve the packaged skill from both source and built module locations. */
-function bundledSkill(): BundledSkill {
+/** Register through the provider path so source=bundled also gets bundled precedence. */
+function bundledSkillProvider(): SkillProvider {
   const moduleDirectory = dirname(fileURLToPath(new URL(import.meta.url)))
   const path = basename(moduleDirectory) === 'plugin'
     ? resolve(moduleDirectory, '../../SKILL.md')
@@ -165,35 +140,28 @@ function bundledSkill(): BundledSkill {
   const end = raw.indexOf('\n---\n', 4)
   if (!raw.startsWith('---\n') || end < 0) throw new Error('genui SKILL.md has invalid frontmatter')
   return {
-    name: 'genui',
-    description: BUNDLED_SKILL_DESCRIPTION,
-    invocation: BUNDLED_SKILL_INVOCATION,
-    source: 'bundled',
-    provider: BUNDLED_SKILL_PROVIDER,
-    path,
-    resourceBase: { kind: 'directory', path: dirname(path) },
-    content: raw.slice(end + 5),
-  }
-}
-
-/** Register through the provider path so source=bundled also gets bundled precedence. */
-function bundledSkillProvider(): BundledSkillProvider {
-  const skill = bundledSkill()
-  const candidate: BundledSkillCandidate = {
-    name: skill.name,
-    description: skill.description,
-    invocation: skill.invocation,
-    source: skill.source,
-    provider: skill.provider,
-    path: skill.path,
-    resourceBase: skill.resourceBase,
-    rank: BUNDLED_SKILL_RANK,
-    locator: skill.path,
-  }
-  return {
     name: BUNDLED_SKILL_PROVIDER,
-    list: () => Promise.resolve([candidate]),
-    get: () => Promise.resolve(skill),
+    list: () => Promise.resolve([{
+      name: 'genui',
+      description: BUNDLED_SKILL_DESCRIPTION,
+      invocation: BUNDLED_SKILL_INVOCATION,
+      source: 'bundled',
+      provider: BUNDLED_SKILL_PROVIDER,
+      path,
+      resourceBase: { kind: 'directory', path: dirname(path) },
+      rank: BUNDLED_SKILL_RANK,
+      locator: path,
+    }]),
+    get: () => Promise.resolve({
+      name: 'genui',
+      description: BUNDLED_SKILL_DESCRIPTION,
+      invocation: BUNDLED_SKILL_INVOCATION,
+      source: 'bundled',
+      provider: BUNDLED_SKILL_PROVIDER,
+      path,
+      resourceBase: { kind: 'directory', path: dirname(path) },
+      content: raw.slice(end + 5),
+    }),
   }
 }
 
@@ -231,8 +199,7 @@ export function apply(ctx: Context): void {
   })
 
   ctx.inject(['skills'], (skillCtx) => {
-    const skills = (skillCtx as Context & { skills: SkillRegistry }).skills
-    skills.registerProvider(() => bundledSkillProvider())
+    skillCtx.skills.registerProvider(() => bundledSkillProvider())
   })
 
   // Lazy-engine asset route: same optional-probe pattern as the tools
